@@ -18,7 +18,8 @@ QHull& QHull::operator=(QHull&& hull)
 {
 	if (this != &hull)
 	{
-		_inputpoints = std::move(hull._inputpoints);
+		_inputpoints = hull._inputpoints;
+
 		_vertices = std::move(hull._vertices);
 		_edges = std::move(hull._edges);
 		_faces = std::move(hull._faces);

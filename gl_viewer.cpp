@@ -44,6 +44,7 @@ void GLViewer::reset()
 {
 	// Load points
 	_points.clear();
+
 	if (_restoreprevioussession)
 	{
 		loadPoints(_points, DEFAULT_POINT_FILENAME);
@@ -55,7 +56,7 @@ void GLViewer::reset()
 	}
 
 	// Build convex hull
-	_qhull = std::move(QHull(&_points));
+	_qhull = QHull(&_points);
 
 	// Create GL geometry
 	updateGLGeometry();
@@ -122,36 +123,20 @@ void GLViewer::savePoints(std::vector<Point>& points, const std::string& filenam
 
 void GLViewer::initGLGeometry()
 {
-	_axisvao = 0;
-	_axisindexcount = 0;
+	_unitcubegl = nullptr;
+	_axisgl = nullptr;
+	_pointsgl = nullptr;
+	_epgl = nullptr;
+	_hullgl = nullptr;
 
-	_hullvao = 0;
-	_hullindexcount = 0;
-
-	_pointsvao = 0;
-	_pointsindexcount = 0;
-
-	_unitcubevao = 0;
-	_unitcubeindexcount = 0;
-
-	_epvao = 0;
-	_epindexcount = 0;
-
-}
-void GLViewer::updateGLGeometry()
-{
-	destroyGLGeometry();
-	createGLGeometry();
-
-	glBindVertexArray(0);
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 }
 void GLViewer::createGLGeometry()
 {
 	std::vector<gk::Point> positions;
 	std::vector<gk::Vec4> colors;
 	std::vector<unsigned int> indices;
+
+	gk::GLBuffer* glbuffer;
 
 	// Unit cube
 	positions = {
@@ -166,19 +151,20 @@ void GLViewer::createGLGeometry()
 		0, 7, 3, 4, 2, 5, 1, 6,
 		4, 5, 5, 6, 6, 7, 7, 4
 	};
-	
-	_unitcubevao = gk::createVertexArray();
-	_unitcubeindexcount = (unsigned int)indices.size();
 
-	gk::createBuffer(GL_ARRAY_BUFFER, positions);
+	_unitcubegl = new GLVertexBufferSet();
+	_unitcubegl->vao = createGLUnmanagedVertexArray();
+	_unitcubegl->indexcount = (unsigned int)indices.size();
+
+	_unitcubegl->positions = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, positions);
 	glVertexAttribPointer(_program->attribute("vertex_position"), 3, GL_FLOAT, GL_FALSE, 0, 0);
 	glEnableVertexAttribArray(_program->attribute("vertex_position"));
 
-	gk::createBuffer(GL_ARRAY_BUFFER, colors);
+	_unitcubegl->colors = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, colors);
 	glVertexAttribPointer(_program->attribute("vertex_color"), 4, GL_FLOAT, GL_FALSE, 0, 0);
 	glEnableVertexAttribArray(_program->attribute("vertex_color"));
 
-	gk::createBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
+	_unitcubegl->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
 
 	// Axis
 	positions = {
@@ -195,18 +181,19 @@ void GLViewer::createGLGeometry()
 
 	indices = { 0, 1, 2, 3, 4, 5 };
 
-	_axisvao = gk::createVertexArray();
-	_axisindexcount = (unsigned int)indices.size();
+	_axisgl = new GLVertexBufferSet();
+	_axisgl->vao = createGLUnmanagedVertexArray();
+	_axisgl->indexcount = (unsigned int)indices.size();
 
-	gk::createBuffer(GL_ARRAY_BUFFER, positions);
+	_axisgl->positions = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, positions);
 	glVertexAttribPointer(_program->attribute("vertex_position"), 3, GL_FLOAT, GL_FALSE, 0, 0);
 	glEnableVertexAttribArray(_program->attribute("vertex_position"));
 
-	gk::createBuffer(GL_ARRAY_BUFFER, colors);
+	_axisgl->colors = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, colors);
 	glVertexAttribPointer(_program->attribute("vertex_color"), 4, GL_FLOAT, GL_FALSE, 0, 0);
 	glEnableVertexAttribArray(_program->attribute("vertex_color"));
 
-	gk::createBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
+	_axisgl->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
 
 	// Point cloud
 	colors = std::vector<gk::Vec4>(_points.size(), gk::Vec4(1, 1, 1, 1));
@@ -214,18 +201,19 @@ void GLViewer::createGLGeometry()
 	indices.resize(_points.size());
 	std::iota(indices.begin(), indices.end(), 0);
 
-	_pointsvao = gk::createVertexArray();
-	_pointsindexcount = (unsigned int)_points.size();
+	_pointsgl = new GLVertexBufferSet();
+	_pointsgl->vao = createGLUnmanagedVertexArray();
+	_pointsgl->indexcount = (unsigned int)_points.size();
 
-	gk::createBuffer(GL_ARRAY_BUFFER, _points);
+	_pointsgl->positions = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, _points);
 	glVertexAttribPointer(_program->attribute("vertex_position"), 3, GL_FLOAT, GL_FALSE, 0, 0);
 	glEnableVertexAttribArray(_program->attribute("vertex_position"));
 
-	gk::createBuffer(GL_ARRAY_BUFFER, colors);
+	_pointsgl->colors = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, colors);
 	glVertexAttribPointer(_program->attribute("vertex_color"), 4, GL_FLOAT, GL_FALSE, 0, 0);
 	glEnableVertexAttribArray(_program->attribute("vertex_color"));
 
-	gk::createBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
+	_pointsgl->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
 
 	// Extreme points
 	positions = {
@@ -243,48 +231,75 @@ void GLViewer::createGLGeometry()
 	indices.resize(positions.size());
 	std::iota(indices.begin(), indices.end(), 0);
 
-	_epvao = gk::createVertexArray();
-	_epindexcount = (unsigned int)positions.size();
+	_epgl = new GLVertexBufferSet();
+	_epgl->vao = createGLUnmanagedVertexArray();
+	_epgl->indexcount = (unsigned int)positions.size();
 
-	gk::createBuffer(GL_ARRAY_BUFFER, positions);
+	_epgl->positions = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, positions);
 	glVertexAttribPointer(_program->attribute("vertex_position"), 3, GL_FLOAT, GL_FALSE, 0, 0);
 	glEnableVertexAttribArray(_program->attribute("vertex_position"));
 
-	gk::createBuffer(GL_ARRAY_BUFFER, colors);
+	_epgl->colors = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, colors);
 	glVertexAttribPointer(_program->attribute("vertex_color"), 4, GL_FLOAT, GL_FALSE, 0, 0);
 	glEnableVertexAttribArray(_program->attribute("vertex_color"));
 
-	gk::createBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
+	_epgl->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
 
 	// Convex hull
 	positions = { _points[_qhull.hullindices[0]], _points[_qhull.hullindices[1]], _points[_qhull.hullindices[2]], _points[_qhull.hullindices[3]] };
 	colors = { gk::Vec4(1, 0, 0, 1), gk::Vec4(1, 0, 0, 1), gk::Vec4(1, 0, 0, 1), gk::Vec4(1, 1, 1, 1) };
 	indices = { 0, 1, 1, 2, 2, 0, 0, 3, 3, 2, 2, 0, 1, 2, 2, 3, 3, 1 };
-	
-	_hullvao = gk::createVertexArray();
 
-	gk::createBuffer(GL_ARRAY_BUFFER, positions);
+	_hullgl = new GLVertexBufferSet();
+	_hullgl->vao = createGLUnmanagedVertexArray();
+	_hullgl->indexcount = (unsigned int)indices.size();
+
+	_hullgl->positions = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, positions);
 	glVertexAttribPointer(_program->attribute("vertex_position"), 3, GL_FLOAT, GL_FALSE, 0, 0);
 	glEnableVertexAttribArray(_program->attribute("vertex_position"));
 
-	gk::createBuffer(GL_ARRAY_BUFFER, colors);
+	_hullgl->colors = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, colors);
 	glVertexAttribPointer(_program->attribute("vertex_color"), 4, GL_FLOAT, GL_FALSE, 0, 0);
 	glEnableVertexAttribArray(_program->attribute("vertex_color"));
 
-	gk::createBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
+	_hullgl->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
+}
+void GLViewer::updateGLGeometry()
+{
+	destroyGLGeometry();
+	createGLGeometry();
+
+	glBindVertexArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 }
 void GLViewer::destroyGLGeometry()
 {
-	if (_axisvao)
-		_axisvao->release();
-	if (_hullvao)
-		_hullvao->release();
-	if (_pointsvao)
-		_pointsvao->release();
-	if (_unitcubevao)
-		_unitcubevao->release();
-	if (_epvao)
-		_epvao->release();
+	if (_unitcubegl)
+	{
+		delete _unitcubegl;
+		_unitcubegl = nullptr;
+	}
+	if (_axisgl)
+	{
+		delete _axisgl;
+		_axisgl = nullptr;
+	}
+	if (_pointsgl)
+	{
+		delete _pointsgl;
+		_pointsgl = nullptr;
+	}
+	if (_epgl)
+	{
+		delete _epgl;
+		_epgl = nullptr;
+	}
+	if (_hullgl)
+	{
+		delete _hullgl;
+		_hullgl = nullptr;
+	}
 
 	initGLGeometry();
 }
@@ -389,15 +404,15 @@ void GLViewer::drawAxis()
 {
 	_program->uniform("mvpMatrix") = (_camera.projectionTransform() * _camera.viewTransform()).matrix();
 
-	glBindVertexArray(_axisvao->name);
-	glDrawElements(GL_LINES, _axisindexcount, GL_UNSIGNED_INT, 0);
+	glBindVertexArray(_axisgl->vao->name);
+	glDrawElements(GL_LINES, _axisgl->indexcount, GL_UNSIGNED_INT, 0);
 }
 void GLViewer::drawUnitCube()
 {
 	_program->uniform("mvpMatrix") = (_camera.projectionTransform() * _camera.viewTransform()).matrix();
 
-	glBindVertexArray(_unitcubevao->name);
-	glDrawElements(GL_LINES, _unitcubeindexcount, GL_UNSIGNED_INT, 0);
+	glBindVertexArray(_unitcubegl->vao->name);
+	glDrawElements(GL_LINES, _unitcubegl->indexcount, GL_UNSIGNED_INT, 0);
 }
 void GLViewer::drawPoints()
 {
@@ -405,8 +420,8 @@ void GLViewer::drawPoints()
 
 	_program->uniform("mvpMatrix") = (_camera.projectionTransform() * _camera.viewTransform()).matrix();
 
-	glBindVertexArray(_pointsvao->name);
-	glDrawElements(GL_POINTS, _pointsindexcount, GL_UNSIGNED_INT, 0);
+	glBindVertexArray(_pointsgl->vao->name);
+	glDrawElements(GL_POINTS, _pointsgl->indexcount, GL_UNSIGNED_INT, 0);
 }
 void GLViewer::drawExtremePoints()
 {
@@ -414,15 +429,15 @@ void GLViewer::drawExtremePoints()
 
 	_program->uniform("mvpMatrix") = (_camera.projectionTransform() * _camera.viewTransform()).matrix();
 
-	glBindVertexArray(_epvao->name);
-	glDrawElements(GL_POINTS, _epindexcount, GL_UNSIGNED_INT, 0);
+	glBindVertexArray(_epgl->vao->name);
+	glDrawElements(GL_POINTS, _epgl->indexcount, GL_UNSIGNED_INT, 0);
 }
 void GLViewer::drawHull()
 {
 	_program->uniform("mvpMatrix") = (_camera.projectionTransform() * _camera.viewTransform()).matrix();
 
-	glBindVertexArray(_hullvao->name);
-	glDrawElements(GL_LINES, _unitcubeindexcount, GL_UNSIGNED_INT, 0);
+	glBindVertexArray(_hullgl->vao->name);
+	glDrawElements(GL_LINES, _hullgl->indexcount, GL_UNSIGNED_INT, 0);
 }
 
 void GLViewer::processWindowResize(SDL_WindowEvent& event)

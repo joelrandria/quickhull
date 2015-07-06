@@ -2,6 +2,7 @@
 #define GLVIEWER_H
 
 #include "gl_camera.h"
+#include "gkit_utils.h"
 #include "qhull.h"
 
 #include <App.h>
@@ -39,25 +40,11 @@ private:
 	/*							GL resources                                */
 	/************************************************************************/
 
-	//! GL geometry: Unit cube.
-	gk::GLVertexArray* _unitcubevao;
-	unsigned int _unitcubeindexcount;
-
-	//! GL geometry: Axis.
-	gk::GLVertexArray* _axisvao;
-	unsigned int _axisindexcount;
-
-	//! GL geometry: Point cloud.
-	gk::GLVertexArray* _pointsvao;
-	unsigned int _pointsindexcount;
-
-	//! GL geometry: Extreme points.
-	gk::GLVertexArray* _epvao;
-	unsigned int _epindexcount;
-
-	//! GL geometry: Convex hull.
-	gk::GLVertexArray* _hullvao;
-	unsigned int _hullindexcount;
+	GLVertexBufferSet* _unitcubegl;		//! GL geometry: Unit cube.
+	GLVertexBufferSet* _axisgl;			//! GL geometry: Axis.
+	GLVertexBufferSet* _pointsgl;		//! GL geometry: Point cloud.
+	GLVertexBufferSet* _epgl;			//! GL geometry: Extreme points.
+	GLVertexBufferSet* _hullgl;			//! GL geometry: Convex hull.
 
 public:
 
@@ -81,8 +68,8 @@ private:
 	void savePoints(std::vector<Point>& points, const std::string& filename);
 
 	void initGLGeometry();
-	void updateGLGeometry();
 	void createGLGeometry();
+	void updateGLGeometry();
 	void destroyGLGeometry();
 
 	void drawUnitCube();
