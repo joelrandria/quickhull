@@ -14,7 +14,7 @@ class QHull
 private:
 
 	/************************************************************************/
-	/*                      Half-edge data structures                       */
+	/*						Half-edge data types								*/
 	/************************************************************************/
 
 	class QHullVertex;
@@ -69,13 +69,14 @@ private:
 
 		QHullFace() : edge(nullptr), _d(0.f) {}
 
+		//! Reverse the face direction.
+		void reverse();
+
 		//! Update support plane's internal data.
 		void updateSupportPlane();
 
-		//! Get the absolute orthogonal distance to the specified point.
-		float distance(const gk::Point& p) const { return fabs(signedDistance(p)); }
 		//! Get the signed orthogonal distance to the specified point, according to the normal direction.
-		float signedDistance(const gk::Point& p) const { return _n.x * p.x + _n.y * p.y + _n.z * p.z + _d; }
+		float distance(const gk::Point& p) const { return _n.x * p.x + _n.y * p.y + _n.z * p.z + _d; }
 	};
 
 	/************************************************************************/
@@ -102,9 +103,9 @@ private:
 	// ToDo JRA: Remove this test code
 
 public:
-
-	int epindices[6];
-	int hullindices[4];
+	
+	int epidx[6];
+	int hullidx[4];
 
 	//////////////////////////////////////////////////////////////////////////
 
@@ -125,7 +126,7 @@ private:
 	void initialize();
 	//! Build internal vertices from input points.
 	void createVertices();
-	//! Build start tetrahedron.
+	//! Build initial tetrahedron.
 	void createStartTetrahedron();
 
 	//! Create a new managed edge.
@@ -133,8 +134,10 @@ private:
 	//! Create a new managed face.
 	QHullFace* createFace();
 	//! Create a new managed face bordered by the specified vertices.
-	//! Vertices are assumed to be specified in clockwise order.
+	//! Vertices are assumed to be specified in clockwise order according to the underlying surface.
 	QHullFace* createFace(int v1idx, int v2idx, int v3idx);
+	//! Create a new managed face bordered by the specified vertex and adjacent edge.
+	QHullFace* createFace(QHullEdge* adjacentedge, int vidx);
 };
 
 inline QHull::QHullEdge* QHull::createEdge()
@@ -166,23 +169,57 @@ inline QHull::QHullFace* QHull::createFace(int v1idx, int v2idx, int v3idx)
 	QHullVertex* v2 = _vertices[v2idx].get();
 	QHullVertex* v3 = _vertices[v3idx].get();
 
-	if (!v2->edge)
-		v2->edge = edge1;
 	edge1->vertex = v3;
 	edge1->next = edge2;
 	edge1->face = face;
 
-	if (!v3->edge)
-		v3->edge = edge2;
 	edge2->vertex = v1;
 	edge2->next = edge3;
 	edge2->face = face;
 
-	if (!v1->edge)
-		v1->edge = edge3;
 	edge3->vertex = v2;
 	edge3->next = edge1;
 	edge3->face = face;
+
+	v1->edge = edge3;
+	v2->edge = edge1;
+	v3->edge = edge2;
+	
+	face->edge = edge3;
+
+	// Compute the support <N,D> plane
+	face->updateSupportPlane();
+
+	return face;
+}
+inline QHull::QHullFace* QHull::createFace(QHullEdge* adjacentedge, int vidx)
+{
+	// Build the mesh
+	QHullFace* face = createFace();
+
+	QHullEdge* edge1 = createEdge();
+	QHullEdge* edge2 = createEdge();
+	QHullEdge* edge3 = createEdge();
+
+	QHullVertex* v1 = adjacentedge->vertex;
+	QHullVertex* v2 = adjacentedge->next->next->vertex;
+	QHullVertex* v3 = _vertices[vidx].get();
+
+	edge1->vertex = v3;
+	edge1->next = edge2;
+	edge1->face = face;
+
+	edge2->vertex = v1;
+	edge2->next = edge3;
+	edge2->face = face;
+
+	edge3->vertex = v2;
+	edge3->next = edge1;
+	edge3->face = face;
+
+	v3->edge = edge2;
+
+	adjacentedge->pair = edge3;
 
 	face->edge = edge3;
 
@@ -190,6 +227,30 @@ inline QHull::QHullFace* QHull::createFace(int v1idx, int v2idx, int v3idx)
 	face->updateSupportPlane();
 
 	return face;
+}
+
+inline void QHull::QHullFace::reverse()
+{
+	QHullEdge* edge3 = edge;
+	QHullEdge* edge1 = edge3->next;
+	QHullEdge* edge2 = edge1->next;
+
+	QHullVertex* v1 = edge2->vertex;
+	QHullVertex* v2 = edge3->vertex;
+	QHullVertex* v3 = edge1->vertex;
+
+	edge3->vertex = v1;
+	edge3->next = edge2;
+
+	edge2->vertex = v3;
+	edge2->next = edge1;
+
+	edge1->vertex = v2;
+	edge1->next = edge3;
+	
+	v1->edge = edge2;
+	v2->edge = edge3;
+	v3->edge = edge1;
 }
 
 inline void QHull::QHullFace::updateSupportPlane()

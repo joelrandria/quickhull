@@ -217,9 +217,9 @@ void GLViewer::createGLGeometry()
 
 	// Extreme points
 	positions = {
-		_points[_qhull.epindices[0]], _points[_qhull.epindices[1]],
-		_points[_qhull.epindices[2]], _points[_qhull.epindices[3]],
-		_points[_qhull.epindices[4]], _points[_qhull.epindices[5]]
+		_points[_qhull.epidx[0]], _points[_qhull.epidx[1]],
+		_points[_qhull.epidx[2]], _points[_qhull.epidx[3]],
+		_points[_qhull.epidx[4]], _points[_qhull.epidx[5]]
 	};
 
 	colors = {
@@ -246,7 +246,7 @@ void GLViewer::createGLGeometry()
 	_epgl->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
 
 	// Convex hull
-	positions = { _points[_qhull.hullindices[0]], _points[_qhull.hullindices[1]], _points[_qhull.hullindices[2]], _points[_qhull.hullindices[3]] };
+	positions = { _points[_qhull.hullidx[0]], _points[_qhull.hullidx[1]], _points[_qhull.hullidx[2]], _points[_qhull.hullidx[3]] };
 	colors = { gk::Vec4(1, 0, 0, 1), gk::Vec4(1, 0, 0, 1), gk::Vec4(1, 0, 0, 1), gk::Vec4(1, 1, 1, 1) };
 	indices = { 0, 1, 1, 2, 2, 0, 0, 3, 3, 2, 2, 0, 1, 2, 2, 3, 3, 1 };
 

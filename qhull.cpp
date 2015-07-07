@@ -26,10 +26,8 @@ QHull& QHull::operator=(QHull&& hull)
 		_pendingfaces = std::move(hull._pendingfaces);
 		_hull = std::move(hull._hull);
 
-		std::copy_n(hull.epindices, 6, epindices);
-		std::copy_n(hull.hullindices, 4, hullindices);
-
-		initialize();
+		std::copy_n(hull.epidx, 6, epidx);
+		std::copy_n(hull.hullidx, 4, hullidx);
 	}
 
 	return *this;
@@ -62,30 +60,31 @@ void QHull::createStartTetrahedron()
 	float d;
 	float dmax;
 	
-	int tetraindices[4];
+	//int epidx[6];
+	int tetraidx[4];
 
 	// Get extreme points (EP)
 	for (int i = 0; i < 6; ++i)
-		epindices[i] = -1;
+		epidx[i] = -1;
 
 	for (int i = 0; i < (int)_points->size(); ++i)
 	{
 		const gk::Point& p = (*_points)[i];
 
-		if (epindices[0] < 0 || p.x < (*_points)[epindices[0]].x)
-			epindices[0] = i;
-		if (epindices[1] < 0 || p.x > (*_points)[epindices[1]].x)
-			epindices[1] = i;
+		if (epidx[0] < 0 || p.x < (*_points)[epidx[0]].x)
+			epidx[0] = i;
+		if (epidx[1] < 0 || p.x > (*_points)[epidx[1]].x)
+			epidx[1] = i;
 
-		if (epindices[2] < 0 || p.y < (*_points)[epindices[2]].y)
-			epindices[2] = i;
-		if (epindices[3] < 0 || p.y > (*_points)[epindices[3]].y)
-			epindices[3] = i;
+		if (epidx[2] < 0 || p.y < (*_points)[epidx[2]].y)
+			epidx[2] = i;
+		if (epidx[3] < 0 || p.y > (*_points)[epidx[3]].y)
+			epidx[3] = i;
 
-		if (epindices[4] < 0 || p.z < (*_points)[epindices[4]].z)
-			epindices[4] = i;
-		if (epindices[5] < 0 || p.z > (*_points)[epindices[5]].z)
-			epindices[5] = i;
+		if (epidx[4] < 0 || p.z < (*_points)[epidx[4]].z)
+			epidx[4] = i;
+		if (epidx[5] < 0 || p.z > (*_points)[epidx[5]].z)
+			epidx[5] = i;
 	}
 
 	// Find the most distant EP pair to build base triangle's first edge
@@ -95,12 +94,12 @@ void QHull::createStartTetrahedron()
 	{
 		for (int j = i + 1; j < 6; ++j)
 		{
-			gk::Vector vij((*_points)[epindices[i]], (*_points)[epindices[j]]);
+			gk::Vector vij((*_points)[epidx[i]], (*_points)[epidx[j]]);
 
 			if ((d = vij.LengthSquared()) > dmax)
 			{
-				tetraindices[0] = epindices[i];
-				tetraindices[1] = epindices[j];
+				tetraidx[0] = epidx[i];
+				tetraidx[1] = epidx[j];
 
 				dmax = d;
 			}
@@ -110,21 +109,21 @@ void QHull::createStartTetrahedron()
 	// Find the most distant EP from the first edge's support line to complete the base triangle
 	dmax = 0.f;
 
-	const gk::Point& t0 = (*_points)[tetraindices[0]];
-	gk::Vector t01 = gk::Normalize(gk::Vector(t0, (*_points)[tetraindices[1]]));
+	const gk::Point& t0 = (*_points)[tetraidx[0]];
+	gk::Vector t01 = gk::Normalize(gk::Vector(t0, (*_points)[tetraidx[1]]));
 
 	for (int i = 0; i < 6; ++i)
 	{
-		if (epindices[i] == tetraindices[0] || epindices[i] == tetraindices[1])
+		if (epidx[i] == tetraidx[0] || epidx[i] == tetraidx[1])
 			continue;
 
-		gk::Vector t0i(t0, (*_points)[epindices[i]]);
+		gk::Vector t0i(t0, (*_points)[epidx[i]]);
 		float pprojlength = gk::Dot(t0i, t01);
 		d = t0i.LengthSquared() - (pprojlength * pprojlength);
 
 		if (d > dmax)
 		{
-			tetraindices[2] = epindices[i];
+			tetraidx[2] = epidx[i];
 
 			dmax = d;
 		}
@@ -132,29 +131,39 @@ void QHull::createStartTetrahedron()
 
 	//! Find the most distant point from the base triangle within the point cloud to complete the initial tetrahedron
 	dmax = 0.f;
-	QHullFace* face = createFace(tetraindices[0], tetraindices[1], tetraindices[2]);
+	QHullFace* face = createFace(tetraidx[0], tetraidx[1], tetraidx[2]);
 
 	for (int i = 0; i < (int)_points->size(); ++i)
 	{
-		if (i == tetraindices[0] || i == tetraindices[1] || i == tetraindices[2])
+		if (i == tetraidx[0] || i == tetraidx[1] || i == tetraidx[2])
 			continue;
 		
-		if ((d = face->distance((*_points)[i])) > dmax)
+		if (fabs(d = face->distance((*_points)[i])) > fabs(dmax))
 		{
-			tetraindices[3] = i;
+			tetraidx[3] = i;
 
 			dmax = d;
 		}
 	}
 
+	//! Reverse the base triangle if not clockwise oriented according to the tetrahedron surface
+	if (dmax > 0)
+	{
+		face->reverse();
+
+		std::cout << "Base triangle reversed !" << std::endl;
+	}
+
+	//! Complete the tetrahedron's mesh
+	_hull.push_back(face);
+	_hull.push_back(createFace(face->edge, tetraidx[3]));
+	_hull.push_back(createFace(face->edge->next, tetraidx[3]));
+	_hull.push_back(createFace(face->edge->next->next, tetraidx[3]));
+
 	//////////////////////////////////////////////////////////////////////////
 	// ToDO JRA: Remove this test code
 
-	std::copy_n(tetraindices, 4, hullindices);
-
-	//////////////////////////////////////////////////////////////////////////
-
-	//! ToDo JRA: Build the tetrahedron's mesh
+	std::copy_n(tetraidx, 4, hullidx);
 }
 
 void QHull::iterate()
