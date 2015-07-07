@@ -1,11 +1,11 @@
 #include "qhull.h"
 
 QHull::QHull()
-	: _inputpoints(nullptr)
+	: _points(nullptr)
 {
 }
 QHull::QHull(const std::vector<gk::Point>* points)
-	: _inputpoints(points)
+	: _points(points)
 {
 	initialize();
 }
@@ -18,7 +18,7 @@ QHull& QHull::operator=(QHull&& hull)
 {
 	if (this != &hull)
 	{
-		_inputpoints = hull._inputpoints;
+		_points = hull._points;
 
 		_vertices = std::move(hull._vertices);
 		_edges = std::move(hull._edges);
@@ -42,19 +42,19 @@ void QHull::initialize()
 }
 void QHull::createVertices()
 {
-	HEVertex* v;
+	QHullVertex* v;
 
-	const int pointcount = (int)_inputpoints->size();
+	const int pointcount = (int)_points->size();
 
 	_vertices.reserve(pointcount);
 
 	for (int i = 0; i < pointcount; ++i)
 	{
-		v = new HEVertex();
+		v = new QHullVertex(_points);
 		v->index = i;
 		v->edge = nullptr;
 
-		_vertices.push_back(std::unique_ptr<HEVertex>(v));
+		_vertices.push_back(std::unique_ptr<QHullVertex>(v));
 	}
 }
 void QHull::createStartTetrahedron()
@@ -64,27 +64,27 @@ void QHull::createStartTetrahedron()
 	
 	int tetraindices[4];
 
-	// Get extreme points
+	// Get extreme points (EP)
 	for (int i = 0; i < 6; ++i)
 		epindices[i] = -1;
 
-	for (int i = 0; i < (int)_inputpoints->size(); ++i)
+	for (int i = 0; i < (int)_points->size(); ++i)
 	{
-		const gk::Point& p = (*_inputpoints)[i];
+		const gk::Point& p = (*_points)[i];
 
-		if (epindices[0] < 0 || p.x < (*_inputpoints)[epindices[0]].x)
+		if (epindices[0] < 0 || p.x < (*_points)[epindices[0]].x)
 			epindices[0] = i;
-		if (epindices[1] < 0 || p.x > (*_inputpoints)[epindices[1]].x)
+		if (epindices[1] < 0 || p.x > (*_points)[epindices[1]].x)
 			epindices[1] = i;
 
-		if (epindices[2] < 0 || p.y < (*_inputpoints)[epindices[2]].y)
+		if (epindices[2] < 0 || p.y < (*_points)[epindices[2]].y)
 			epindices[2] = i;
-		if (epindices[3] < 0 || p.y > (*_inputpoints)[epindices[3]].y)
+		if (epindices[3] < 0 || p.y > (*_points)[epindices[3]].y)
 			epindices[3] = i;
 
-		if (epindices[4] < 0 || p.z < (*_inputpoints)[epindices[4]].z)
+		if (epindices[4] < 0 || p.z < (*_points)[epindices[4]].z)
 			epindices[4] = i;
-		if (epindices[5] < 0 || p.z > (*_inputpoints)[epindices[5]].z)
+		if (epindices[5] < 0 || p.z > (*_points)[epindices[5]].z)
 			epindices[5] = i;
 	}
 
@@ -95,7 +95,7 @@ void QHull::createStartTetrahedron()
 	{
 		for (int j = i + 1; j < 6; ++j)
 		{
-			gk::Vector vij((*_inputpoints)[epindices[i]], (*_inputpoints)[epindices[j]]);
+			gk::Vector vij((*_points)[epindices[i]], (*_points)[epindices[j]]);
 
 			if ((d = vij.LengthSquared()) > dmax)
 			{
@@ -109,14 +109,20 @@ void QHull::createStartTetrahedron()
 
 	// Find the most distant EP from the first edge's support line to complete the base triangle
 	dmax = 0.f;
-	Line baseline((*_inputpoints)[tetraindices[0]], (*_inputpoints)[tetraindices[1]]);
+
+	const gk::Point& t0 = (*_points)[tetraindices[0]];
+	gk::Vector t01 = gk::Normalize(gk::Vector(t0, (*_points)[tetraindices[1]]));
 
 	for (int i = 0; i < 6; ++i)
 	{
 		if (epindices[i] == tetraindices[0] || epindices[i] == tetraindices[1])
 			continue;
 
-		if ((d = baseline.squareddistance((*_inputpoints)[epindices[i]])) > dmax)
+		gk::Vector t0i(t0, (*_points)[epindices[i]]);
+		float pprojlength = gk::Dot(t0i, t01);
+		d = t0i.LengthSquared() - (pprojlength * pprojlength);
+
+		if (d > dmax)
 		{
 			tetraindices[2] = epindices[i];
 
@@ -124,16 +130,16 @@ void QHull::createStartTetrahedron()
 		}
 	}
 
-	//! Find the most distant point from the base triangle within the point cloud to complete the tetrahedron
+	//! Find the most distant point from the base triangle within the point cloud to complete the initial tetrahedron
 	dmax = 0.f;
-	Plane baseplane((*_inputpoints)[tetraindices[0]], (*_inputpoints)[tetraindices[1]], (*_inputpoints)[tetraindices[2]]);
+	QHullFace* face = createFace(tetraindices[0], tetraindices[1], tetraindices[2]);
 
-	for (int i = 0; i < (int)_inputpoints->size(); ++i)
+	for (int i = 0; i < (int)_points->size(); ++i)
 	{
 		if (i == tetraindices[0] || i == tetraindices[1] || i == tetraindices[2])
 			continue;
 		
-		if ((d = baseplane.distance((*_inputpoints)[i])) > dmax)
+		if ((d = face->distance((*_points)[i])) > dmax)
 		{
 			tetraindices[3] = i;
 

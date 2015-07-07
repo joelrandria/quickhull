@@ -14,92 +14,89 @@ class QHull
 private:
 
 	/************************************************************************/
-	/*							Geometry utilities							*/
-	/************************************************************************/
-
-	//! Defines a line via 2 distinct points.
-	class Line
-	{
-	private:
-
-		const gk::Point _a;
-		const gk::Point _b;
-
-		gk::Vector _dir;
-
-	public:
-
-		Line(const gk::Point& a = gk::Point(), const gk::Point& b = gk::Point());
-
-		float squareddistance(const gk::Point& p) const;
-	};
-
-	//! Define an <N,D> plane via 3 distinct points.
-	class Plane
-	{
-	private:
-
-		const gk::Point _a;
-		const gk::Point _b;
-		const gk::Point _c;
-
-		gk::Vector _n;
-		float _d;
-
-	public:
-
-		Plane(const gk::Point& a = gk::Point(), const gk::Point& b = gk::Point(), const gk::Point& c = gk::Point());
-
-		float distance(const gk::Point& p) const;
-	};
-
-	/************************************************************************/
 	/*                      Half-edge data structures                       */
 	/************************************************************************/
 
-	//! Half-edge vertex.
-	typedef struct
-	{
-		//! Input point list index.
-		int index;
+	class QHullVertex;
+	class QHullEdge;
+	class QHullFace;
 
-		struct HEEdge* edge;
-	} HEVertex;
+	//! Half-edge vertex.
+	class QHullVertex
+	{
+	private:
+
+		//! Global point set.
+		const std::vector<gk::Point>* _points;
+
+	public:
+
+		int index;			//! Point list index
+
+		QHullEdge* edge;	//! One of the half-edges emanating from the vertex
+
+		QHullVertex(const std::vector<gk::Point>* points) : _points(points), index(-1), edge(nullptr) {}
+
+		const gk::Point& point() const { return (*_points)[index]; }
+	};
 
 	//! Half-edge.
-	typedef struct
+	class QHullEdge
 	{
-		struct HEVertex* vertex;
-		struct HEEdge* pair;
-		struct HEFace* face;
-		struct HEEdge* next;
-	} HEEdge;
+	public:
+
+		QHullVertex* vertex;	//! Vertex at the end of the half-edge
+
+		QHullEdge* pair;		//! Oppositely oriented adjacent half-edge
+		QHullEdge* next;		//! Next half-edge around the face
+
+		QHullFace* face;		//! Face the half-edge borders
+
+		QHullEdge() : vertex(nullptr), pair(nullptr), next(nullptr), face(nullptr) {}
+	};
 
 	//! Half-edge face.
-	typedef struct
+	class QHullFace
 	{
-		struct HEEdge* edge;
-	} HEFace;
+	private:
+
+		gk::Vector _n;		//! Face's normal
+		float _d;			//! Signed distance to the origin
+
+	public:
+
+		QHullEdge* edge;	//! One of the half-edges bordering the face
+
+		QHullFace() : edge(nullptr), _d(0.f) {}
+
+		//! Update support plane's internal data.
+		void updateSupportPlane();
+
+		//! Get the absolute orthogonal distance to the specified point.
+		float distance(const gk::Point& p) const { return fabs(signedDistance(p)); }
+		//! Get the signed orthogonal distance to the specified point, according to the normal direction.
+		float signedDistance(const gk::Point& p) const { return _n.x * p.x + _n.y * p.y + _n.z * p.z + _d; }
+	};
 
 	/************************************************************************/
 	/*								Internals								*/
 	/************************************************************************/
 
 	//! Input points.
-	const std::vector<gk::Point>* _inputpoints;
+	const std::vector<gk::Point>* _points;
 
 	//! Global vertex set.
-	std::vector<std::unique_ptr<HEVertex>> _vertices;
+	std::vector<std::unique_ptr<QHullVertex>> _vertices;
 	//! Global edge set.
-	std::vector<std::unique_ptr<HEEdge>> _edges;
+	std::vector<std::unique_ptr<QHullEdge>> _edges;
 	//! Global face set.
-	std::vector<std::unique_ptr<HEFace>> _faces;
+	std::vector<std::unique_ptr<QHullFace>> _faces;
 
 	//! Faces currently processed.
-	std::stack<HEFace*> _pendingfaces;
+	std::stack<QHullFace*> _pendingfaces;
 
 	//! Computed hull.
-	std::vector<HEFace*> _hull;
+	std::vector<QHullFace*> _hull;
 
 	//////////////////////////////////////////////////////////////////////////
 	// ToDo JRA: Remove this test code
@@ -130,29 +127,79 @@ private:
 	void createVertices();
 	//! Build start tetrahedron.
 	void createStartTetrahedron();
+
+	//! Create a new managed edge.
+	QHullEdge* createEdge();
+	//! Create a new managed face.
+	QHullFace* createFace();
+	//! Create a new managed face bordered by the specified vertices.
+	//! Vertices are assumed to be specified in clockwise order.
+	QHullFace* createFace(int v1idx, int v2idx, int v3idx);
 };
 
-inline QHull::Line::Line(const gk::Point& a, const gk::Point& b)
-	: _a(a), _b(b), _dir(gk::Normalize(gk::Vector(_a, _b)))
+inline QHull::QHullEdge* QHull::createEdge()
 {
-}
-inline float QHull::Line::squareddistance(const gk::Point& p) const
-{
-	gk::Vector ap(_a, p);
-	float pprojlength = gk::Dot(ap, _dir);
+	QHullEdge* edge = new QHullEdge();
 
-	return ap.LengthSquared() - (pprojlength * pprojlength);
+	_edges.push_back(std::unique_ptr<QHullEdge>(edge));
+
+	return edge;
+}
+inline QHull::QHullFace* QHull::createFace()
+{
+	QHullFace* face = new QHullFace();
+
+	_faces.push_back(std::unique_ptr<QHullFace>(face));
+
+	return face;
+}
+inline QHull::QHullFace* QHull::createFace(int v1idx, int v2idx, int v3idx)
+{
+	// Build the mesh
+	QHullFace* face = createFace();
+
+	QHullEdge* edge1 = createEdge();
+	QHullEdge* edge2 = createEdge();
+	QHullEdge* edge3 = createEdge();
+
+	QHullVertex* v1 = _vertices[v1idx].get();
+	QHullVertex* v2 = _vertices[v2idx].get();
+	QHullVertex* v3 = _vertices[v3idx].get();
+
+	if (!v2->edge)
+		v2->edge = edge1;
+	edge1->vertex = v3;
+	edge1->next = edge2;
+	edge1->face = face;
+
+	if (!v3->edge)
+		v3->edge = edge2;
+	edge2->vertex = v1;
+	edge2->next = edge3;
+	edge2->face = face;
+
+	if (!v1->edge)
+		v1->edge = edge3;
+	edge3->vertex = v2;
+	edge3->next = edge1;
+	edge3->face = face;
+
+	face->edge = edge3;
+
+	// Compute the support <N,D> plane
+	face->updateSupportPlane();
+
+	return face;
 }
 
-inline QHull::Plane::Plane(const gk::Point& a, const gk::Point& b, const gk::Point& c)
-	: _a(a), _b(b), _c(c)
+inline void QHull::QHullFace::updateSupportPlane()
 {
-	_n = gk::Normalize(gk::Cross(gk::Vector(_a, _b), gk::Vector(_a, _c)));
-	_d = -(_a.x * _n.x + _a.y * _n.y + _a.z * _n.z);
-}
-inline float QHull::Plane::distance(const gk::Point& p) const
-{
-	return fabs(_n.x * p.x + _n.y * p.y + _n.z * p.z + _d);
+	const gk::Point& v1 = edge->vertex->point();
+	const gk::Point& v2 = edge->next->vertex->point();
+	const gk::Point& v3 = edge->next->next->vertex->point();
+
+	_n = gk::Normalize(gk::Cross(gk::Vector(v1, v2), gk::Vector(v1, v3)));
+	_d = -(v1.x * _n.x + v1.y * _n.y + v1.z * _n.z);
 }
 
 #endif
