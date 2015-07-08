@@ -6,23 +6,39 @@
 #include <stack>
 #include <vector>
 #include <memory>
+#include <stdexcept>
 
 //! Quick hull algorithm implementation for convex hull.
 //! http://www.cise.ufl.edu/~ungor/courses/fall06/papers/QuickHull.pdf
 class QHull
 {
+public:
+
+	//! Triangle face minimal representation.
+	struct Face
+	{
+		int idx[3];
+
+		Face(int idx1, int idx2, int idx3)
+		{
+			idx[0] = idx1;
+			idx[1] = idx2;
+			idx[2] = idx3;
+		}
+	};
+
 private:
 
 	/************************************************************************/
 	/*						Half-edge data types								*/
 	/************************************************************************/
 
-	class QHullVertex;
-	class QHullEdge;
-	class QHullFace;
+	class HEVertex;
+	class HEEdge;
+	class HEFace;
 
 	//! Half-edge vertex.
-	class QHullVertex
+	class HEVertex
 	{
 	private:
 
@@ -33,30 +49,30 @@ private:
 
 		int index;			//! Point list index
 
-		QHullEdge* edge;	//! One of the half-edges emanating from the vertex
+		HEEdge* edge;	//! One of the half-edges emanating from the vertex
 
-		QHullVertex(const std::vector<gk::Point>* points) : _points(points), index(-1), edge(nullptr) {}
+		HEVertex(const std::vector<gk::Point>* points) : _points(points), index(-1), edge(nullptr) {}
 
 		const gk::Point& point() const { return (*_points)[index]; }
 	};
 
 	//! Half-edge.
-	class QHullEdge
+	class HEEdge
 	{
 	public:
 
-		QHullVertex* vertex;	//! Vertex at the end of the half-edge
+		HEVertex* vertex;	//! Vertex at the end of the half-edge
 
-		QHullEdge* pair;		//! Oppositely oriented adjacent half-edge
-		QHullEdge* next;		//! Next half-edge around the face
+		HEEdge* pair;		//! Oppositely oriented adjacent half-edge
+		HEEdge* next;		//! Next half-edge around the face
 
-		QHullFace* face;		//! Face the half-edge borders
+		HEFace* face;		//! Face the half-edge borders
 
-		QHullEdge() : vertex(nullptr), pair(nullptr), next(nullptr), face(nullptr) {}
+		HEEdge() : vertex(nullptr), pair(nullptr), next(nullptr), face(nullptr) {}
 	};
 
 	//! Half-edge face.
-	class QHullFace
+	class HEFace
 	{
 	private:
 
@@ -65,11 +81,11 @@ private:
 
 	public:
 
-		QHullEdge* edge;	//! One of the half-edges bordering the face
+		HEEdge* edge;	//! One of the half-edges bordering the face
 
-		QHullFace() : edge(nullptr), _d(0.f) {}
+		HEFace() : edge(nullptr), _d(0.f) {}
 
-		//! Reverse the face direction.
+		//! Reverse the face orientation.
 		void reverse();
 
 		//! Update support plane's internal data.
@@ -87,25 +103,23 @@ private:
 	const std::vector<gk::Point>* _points;
 
 	//! Global vertex set.
-	std::vector<std::unique_ptr<QHullVertex>> _vertices;
+	std::vector<std::unique_ptr<HEVertex>> _vertices;
 	//! Global edge set.
-	std::vector<std::unique_ptr<QHullEdge>> _edges;
+	std::vector<std::unique_ptr<HEEdge>> _edges;
 	//! Global face set.
-	std::vector<std::unique_ptr<QHullFace>> _faces;
+	std::vector<std::unique_ptr<HEFace>> _faces;
 
 	//! Faces currently processed.
-	std::stack<QHullFace*> _pendingfaces;
+	std::stack<HEFace*> _pendingfaces;
 
 	//! Computed hull.
-	std::vector<QHullFace*> _hull;
+	std::vector<HEFace*> _hull;
 
 	//////////////////////////////////////////////////////////////////////////
 	// ToDo JRA: Remove this test code
-
 public:
-	
-	int epidx[6];
-	int hullidx[4];
+
+	int apexidx;
 
 	//////////////////////////////////////////////////////////////////////////
 
@@ -120,6 +134,9 @@ public:
 	//! Compute one iteration.
 	void iterate();
 
+	//! Get all the faces making up the geometry hull.
+	std::vector<Face> hull() const;
+
 private:
 
 	//! Initialize internal data and initial convex hull.
@@ -127,47 +144,48 @@ private:
 	//! Build internal vertices from input points.
 	void createVertices();
 	//! Build initial tetrahedron.
-	void createStartTetrahedron();
+	void createInitialTetrahedron();
 
 	//! Create a new managed edge.
-	QHullEdge* createEdge();
+	HEEdge* createEdge();
 	//! Create a new managed face.
-	QHullFace* createFace();
+	HEFace* createFace();
 	//! Create a new managed face bordered by the specified vertices.
 	//! Vertices are assumed to be specified in clockwise order according to the underlying surface.
-	QHullFace* createFace(int v1idx, int v2idx, int v3idx);
-	//! Create a new managed face bordered by the specified vertex and adjacent edge.
-	QHullFace* createFace(QHullEdge* adjacentedge, int vidx);
+	HEFace* createFace(int v1idx, int v2idx, int v3idx);
+
+	//! Create a new managed face bordered by extruding the specified edge toward the specified vertex.
+	//QHullFace* extrude(QHullEdge* adjacentedge, int vidx);
 };
 
-inline QHull::QHullEdge* QHull::createEdge()
+inline QHull::HEEdge* QHull::createEdge()
 {
-	QHullEdge* edge = new QHullEdge();
+	HEEdge* edge = new HEEdge();
 
-	_edges.push_back(std::unique_ptr<QHullEdge>(edge));
+	_edges.push_back(std::unique_ptr<HEEdge>(edge));
 
 	return edge;
 }
-inline QHull::QHullFace* QHull::createFace()
+inline QHull::HEFace* QHull::createFace()
 {
-	QHullFace* face = new QHullFace();
+	HEFace* face = new HEFace();
 
-	_faces.push_back(std::unique_ptr<QHullFace>(face));
+	_faces.push_back(std::unique_ptr<HEFace>(face));
 
 	return face;
 }
-inline QHull::QHullFace* QHull::createFace(int v1idx, int v2idx, int v3idx)
+inline QHull::HEFace* QHull::createFace(int v1idx, int v2idx, int v3idx)
 {
 	// Build the mesh
-	QHullFace* face = createFace();
+	HEFace* face = createFace();
 
-	QHullEdge* edge1 = createEdge();
-	QHullEdge* edge2 = createEdge();
-	QHullEdge* edge3 = createEdge();
+	HEEdge* edge1 = createEdge();
+	HEEdge* edge2 = createEdge();
+	HEEdge* edge3 = createEdge();
 
-	QHullVertex* v1 = _vertices[v1idx].get();
-	QHullVertex* v2 = _vertices[v2idx].get();
-	QHullVertex* v3 = _vertices[v3idx].get();
+	HEVertex* v1 = _vertices[v1idx].get();
+	HEVertex* v2 = _vertices[v2idx].get();
+	HEVertex* v3 = _vertices[v3idx].get();
 
 	edge1->vertex = v3;
 	edge1->next = edge2;
@@ -184,42 +202,6 @@ inline QHull::QHullFace* QHull::createFace(int v1idx, int v2idx, int v3idx)
 	v1->edge = edge3;
 	v2->edge = edge1;
 	v3->edge = edge2;
-	
-	face->edge = edge3;
-
-	// Compute the support <N,D> plane
-	face->updateSupportPlane();
-
-	return face;
-}
-inline QHull::QHullFace* QHull::createFace(QHullEdge* adjacentedge, int vidx)
-{
-	// Build the mesh
-	QHullFace* face = createFace();
-
-	QHullEdge* edge1 = createEdge();
-	QHullEdge* edge2 = createEdge();
-	QHullEdge* edge3 = createEdge();
-
-	QHullVertex* v1 = adjacentedge->vertex;
-	QHullVertex* v2 = adjacentedge->next->next->vertex;
-	QHullVertex* v3 = _vertices[vidx].get();
-
-	edge1->vertex = v3;
-	edge1->next = edge2;
-	edge1->face = face;
-
-	edge2->vertex = v1;
-	edge2->next = edge3;
-	edge2->face = face;
-
-	edge3->vertex = v2;
-	edge3->next = edge1;
-	edge3->face = face;
-
-	v3->edge = edge2;
-
-	adjacentedge->pair = edge3;
 
 	face->edge = edge3;
 
@@ -229,15 +211,56 @@ inline QHull::QHullFace* QHull::createFace(QHullEdge* adjacentedge, int vidx)
 	return face;
 }
 
-inline void QHull::QHullFace::reverse()
-{
-	QHullEdge* edge3 = edge;
-	QHullEdge* edge1 = edge3->next;
-	QHullEdge* edge2 = edge1->next;
+// inline QHull::QHullFace* QHull::extrude(QHullEdge* adjacentedge, int vidx)
+// {
+// 	if (adjacentedge->pair)
+// 		throw std::logic_error("QHull::extrude(): A face already exists at the specified location");
+// 
+// 	// Build the mesh
+// 	QHullFace* face = createFace();
+// 
+// 	QHullEdge* edge1 = createEdge();
+// 	QHullEdge* edge2 = createEdge();
+// 	QHullEdge* edge3 = createEdge();
+// 
+// 	QHullVertex* v1 = adjacentedge->vertex;
+// 	QHullVertex* v2 = adjacentedge->next->next->vertex;
+// 	QHullVertex* v3 = _vertices[vidx].get();
+// 
+// 	edge1->vertex = v3;
+// 	edge1->next = edge2;
+// 	edge1->face = face;
+// 
+// 	edge2->vertex = v1;
+// 	edge2->next = edge3;
+// 	edge2->face = face;
+// 
+// 	edge3->vertex = v2;
+// 	edge3->next = edge1;
+// 	edge3->face = face;
+// 
+// 	v3->edge = edge2;
+// 
+// 	adjacentedge->pair = edge3;
+// 	edge3->pair = adjacentedge;
+// 
+// 	face->edge = edge3;
+// 
+// 	// Compute the support <N,D> plane
+// 	face->updateSupportPlane();
+// 
+// 	return face;
+// }
 
-	QHullVertex* v1 = edge2->vertex;
-	QHullVertex* v2 = edge3->vertex;
-	QHullVertex* v3 = edge1->vertex;
+inline void QHull::HEFace::reverse()
+{
+	HEEdge* edge3 = edge;
+	HEEdge* edge1 = edge3->next;
+	HEEdge* edge2 = edge1->next;
+
+	HEVertex* v1 = edge2->vertex;
+	HEVertex* v2 = edge3->vertex;
+	HEVertex* v3 = edge1->vertex;
 
 	edge3->vertex = v1;
 	edge3->next = edge2;
@@ -247,13 +270,16 @@ inline void QHull::QHullFace::reverse()
 
 	edge1->vertex = v2;
 	edge1->next = edge3;
-	
+
 	v1->edge = edge2;
 	v2->edge = edge3;
 	v3->edge = edge1;
+
+	_n *= -1;
+	_d *= -1;
 }
 
-inline void QHull::QHullFace::updateSupportPlane()
+inline void QHull::HEFace::updateSupportPlane()
 {
 	const gk::Point& v1 = edge->vertex->point();
 	const gk::Point& v2 = edge->next->vertex->point();

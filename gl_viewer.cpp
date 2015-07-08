@@ -43,15 +43,13 @@ int GLViewer::init()
 void GLViewer::reset()
 {
 	// Load points
-	_points.clear();
-
 	if (_restoreprevioussession)
 	{
-		loadPoints(_points, DEFAULT_POINT_FILENAME);
+		_points = loadPoints(DEFAULT_POINT_FILENAME);
 	}
 	else
 	{
-		loadRandomPoints(_points, DEFAULT_POINT_COUNT);
+		_points = loadRandomPoints(DEFAULT_POINT_COUNT);
 		savePoints(_points, DEFAULT_POINT_FILENAME);
 	}
 
@@ -66,8 +64,10 @@ int GLViewer::quit()
 	return 0;
 }
 
-void GLViewer::loadRandomPoints(std::vector<Point>& points, int count)
+std::vector<Point> GLViewer::loadRandomPoints(int count)
 {
+	std::vector<Point> points;
+
 	Point p;
 
 	points.reserve(count);
@@ -80,9 +80,13 @@ void GLViewer::loadRandomPoints(std::vector<Point>& points, int count)
 
 		points.push_back(p);
 	}
+
+	return points;
 }
-void GLViewer::loadPoints(std::vector<Point>& points, const std::string& filename)
+std::vector<Point> GLViewer::loadPoints(const std::string& filename)
 {
+	std::vector<Point> points;
+
 	std::ifstream file(filename);
 
 	int i = 0;
@@ -101,6 +105,8 @@ void GLViewer::loadPoints(std::vector<Point>& points, const std::string& filenam
 	}
 
 	file.close();
+
+	return points;
 }
 void GLViewer::savePoints(std::vector<Point>& points, const std::string& filename)
 {
@@ -126,8 +132,10 @@ void GLViewer::initGLGeometry()
 	_unitcubegl = nullptr;
 	_axisgl = nullptr;
 	_pointsgl = nullptr;
-	_epgl = nullptr;
-	_hullgl = nullptr;
+
+	_hullglpoints = nullptr;
+	_hullgledges = nullptr;
+	_hullglfaces = nullptr;
 
 }
 void GLViewer::createGLGeometry()
@@ -135,8 +143,6 @@ void GLViewer::createGLGeometry()
 	std::vector<gk::Point> positions;
 	std::vector<gk::Vec4> colors;
 	std::vector<unsigned int> indices;
-
-	gk::GLBuffer* glbuffer;
 
 	// Unit cube
 	positions = {
@@ -195,7 +201,7 @@ void GLViewer::createGLGeometry()
 
 	_axisgl->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
 
-	// Point cloud
+	// Points
 	colors = std::vector<gk::Vec4>(_points.size(), gk::Vec4(1, 1, 1, 1));
 
 	indices.resize(_points.size());
@@ -215,54 +221,88 @@ void GLViewer::createGLGeometry()
 
 	_pointsgl->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
 
-	// Extreme points
-	positions = {
-		_points[_qhull.epidx[0]], _points[_qhull.epidx[1]],
-		_points[_qhull.epidx[2]], _points[_qhull.epidx[3]],
-		_points[_qhull.epidx[4]], _points[_qhull.epidx[5]]
-	};
+	// Hull points
+	std::vector<QHull::Face> hull = _qhull.hull();
 
-	colors = {
-		gk::Vec4(1, 0, 0, 1), gk::Vec4(1, 0, 0, 1),
-		gk::Vec4(0, 1, 0, 1), gk::Vec4(0, 1, 0, 1),
-		gk::Vec4(0, 0, 1, 1), gk::Vec4(0, 0, 1, 1)
-	};
+	colors = std::vector<gk::Vec4>(_points.size(), gk::Vec4(1, 1, 0, 1));
 
-	indices.resize(positions.size());
-	std::iota(indices.begin(), indices.end(), 0);
+	indices.resize(hull.size() * 3);
+	for (int i = 0; i < (int)hull.size(); ++i)
+	{
+		indices[i * 3] = (unsigned int)(hull[i].idx[0]);
+		indices[(i * 3) + 1] = (unsigned int)(hull[i].idx[1]);
+		indices[(i * 3) + 2] = (unsigned int)(hull[i].idx[2]);
+	}
+	indices.push_back((unsigned int)_qhull.apexidx);
 
-	_epgl = new GLVertexBufferSet();
-	_epgl->vao = createGLUnmanagedVertexArray();
-	_epgl->indexcount = (unsigned int)positions.size();
+	_hullglpoints = new GLVertexBufferSet();
+	_hullglpoints->vao = createGLUnmanagedVertexArray();
+	_hullglpoints->indexcount = (unsigned int)indices.size();
 
-	_epgl->positions = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, positions);
+	_hullglpoints->positions = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, _points);
 	glVertexAttribPointer(_program->attribute("vertex_position"), 3, GL_FLOAT, GL_FALSE, 0, 0);
 	glEnableVertexAttribArray(_program->attribute("vertex_position"));
 
-	_epgl->colors = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, colors);
+	_hullglpoints->colors = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, colors);
 	glVertexAttribPointer(_program->attribute("vertex_color"), 4, GL_FLOAT, GL_FALSE, 0, 0);
 	glEnableVertexAttribArray(_program->attribute("vertex_color"));
 
-	_epgl->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
+	_hullglpoints->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
 
-	// Convex hull
-	positions = { _points[_qhull.hullidx[0]], _points[_qhull.hullidx[1]], _points[_qhull.hullidx[2]], _points[_qhull.hullidx[3]] };
-	colors = { gk::Vec4(1, 0, 0, 1), gk::Vec4(1, 0, 0, 1), gk::Vec4(1, 0, 0, 1), gk::Vec4(1, 1, 1, 1) };
-	indices = { 0, 1, 1, 2, 2, 0, 0, 3, 3, 2, 2, 0, 1, 2, 2, 3, 3, 1 };
+	// Hull edges
+	colors = std::vector<gk::Vec4>(_points.size(), gk::Vec4(1, 1, 1, 1));
 
-	_hullgl = new GLVertexBufferSet();
-	_hullgl->vao = createGLUnmanagedVertexArray();
-	_hullgl->indexcount = (unsigned int)indices.size();
+	indices.resize(hull.size() * 6);
+	for (int i = 0; i < (int)hull.size(); ++i)
+	{
+		indices[i * 3] = (unsigned int)(hull[i].idx[0]);
+		indices[(i * 3) + 1] = (unsigned int)(hull[i].idx[1]);
 
-	_hullgl->positions = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, positions);
+		indices[(i * 3) + 2] = (unsigned int)(hull[i].idx[1]);
+		indices[(i * 3) + 3] = (unsigned int)(hull[i].idx[2]);
+
+		indices[(i * 3) + 4] = (unsigned int)(hull[i].idx[2]);
+		indices[(i * 3) + 5] = (unsigned int)(hull[i].idx[0]);
+	}
+
+	_hullgledges = new GLVertexBufferSet();
+	_hullgledges->vao = createGLUnmanagedVertexArray();
+	_hullgledges->indexcount = (unsigned int)indices.size();
+
+	_hullgledges->positions = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, _points);
 	glVertexAttribPointer(_program->attribute("vertex_position"), 3, GL_FLOAT, GL_FALSE, 0, 0);
 	glEnableVertexAttribArray(_program->attribute("vertex_position"));
 
-	_hullgl->colors = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, colors);
+	_hullgledges->colors = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, colors);
 	glVertexAttribPointer(_program->attribute("vertex_color"), 4, GL_FLOAT, GL_FALSE, 0, 0);
 	glEnableVertexAttribArray(_program->attribute("vertex_color"));
 
-	_hullgl->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
+	_hullgledges->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
+
+	// Hull faces
+	colors = std::vector<gk::Vec4>(_points.size(), gk::Vec4(0, 0, 1, 1));
+
+	indices.resize(hull.size() * 3);
+	for (int i = 0; i < (int)hull.size(); ++i)
+	{
+		indices[i * 3] = (unsigned int)(hull[i].idx[0]);
+		indices[(i * 3) + 1] = (unsigned int)(hull[i].idx[1]);
+		indices[(i * 3) + 2] = (unsigned int)(hull[i].idx[2]);
+	}
+
+	_hullglfaces = new GLVertexBufferSet();
+	_hullglfaces->vao = createGLUnmanagedVertexArray();
+	_hullglfaces->indexcount = (unsigned int)indices.size();
+
+	_hullglfaces->positions = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, _points);
+	glVertexAttribPointer(_program->attribute("vertex_position"), 3, GL_FLOAT, GL_FALSE, 0, 0);
+	glEnableVertexAttribArray(_program->attribute("vertex_position"));
+
+	_hullglfaces->colors = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, colors);
+	glVertexAttribPointer(_program->attribute("vertex_color"), 4, GL_FLOAT, GL_FALSE, 0, 0);
+	glEnableVertexAttribArray(_program->attribute("vertex_color"));
+
+	_hullglfaces->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
 }
 void GLViewer::updateGLGeometry()
 {
@@ -290,15 +330,21 @@ void GLViewer::destroyGLGeometry()
 		delete _pointsgl;
 		_pointsgl = nullptr;
 	}
-	if (_epgl)
+
+	if (_hullglpoints)
 	{
-		delete _epgl;
-		_epgl = nullptr;
+		delete _hullglpoints;
+		_hullglpoints = nullptr;
 	}
-	if (_hullgl)
+	if (_hullgledges)
 	{
-		delete _hullgl;
-		_hullgl = nullptr;
+		delete _hullgledges;
+		_hullgledges = nullptr;
+	}
+	if (_hullglfaces)
+	{
+		delete _hullglfaces;
+		_hullglfaces = nullptr;
 	}
 
 	initGLGeometry();
@@ -373,11 +419,37 @@ int GLViewer::draw()
 
 	glUseProgram(_program->name);
 
-	drawUnitCube();
-	drawAxis();
-	drawPoints();
-	drawExtremePoints();
-	drawHull();
+	_program->uniform("mvpMatrix") = (_camera.projectionTransform() * _camera.viewTransform()).matrix();
+
+	// Unit cube
+	glBindVertexArray(_unitcubegl->vao->name);
+	glDrawElements(GL_LINES, _unitcubegl->indexcount, GL_UNSIGNED_INT, 0);
+
+	// Axis
+	glBindVertexArray(_axisgl->vao->name);
+	glDrawElements(GL_LINES, _axisgl->indexcount, GL_UNSIGNED_INT, 0);
+
+	// Points
+	glPointSize(2);
+
+	glBindVertexArray(_pointsgl->vao->name);
+	glDrawElements(GL_POINTS, _pointsgl->indexcount, GL_UNSIGNED_INT, 0);
+
+	// Hull points
+	glPointSize(6);
+
+	glBindVertexArray(_hullglpoints->vao->name);
+	glDrawElements(GL_POINTS, _hullglpoints->indexcount, GL_UNSIGNED_INT, 0);
+
+	// Hull edges
+	glLineWidth(2);
+
+	glBindVertexArray(_hullgledges->vao->name);
+	glDrawElements(GL_LINES, _hullgledges->indexcount, GL_UNSIGNED_INT, 0);
+
+	// Hull faces
+	glBindVertexArray(_hullglfaces->vao->name);
+	glDrawElements(GL_TRIANGLES, _hullglfaces->indexcount, GL_UNSIGNED_INT, 0);
 
 	//	GL cleaning
 	glUseProgram(0);
@@ -399,45 +471,6 @@ int GLViewer::draw()
 	present();
 
 	return 1;
-}
-void GLViewer::drawAxis()
-{
-	_program->uniform("mvpMatrix") = (_camera.projectionTransform() * _camera.viewTransform()).matrix();
-
-	glBindVertexArray(_axisgl->vao->name);
-	glDrawElements(GL_LINES, _axisgl->indexcount, GL_UNSIGNED_INT, 0);
-}
-void GLViewer::drawUnitCube()
-{
-	_program->uniform("mvpMatrix") = (_camera.projectionTransform() * _camera.viewTransform()).matrix();
-
-	glBindVertexArray(_unitcubegl->vao->name);
-	glDrawElements(GL_LINES, _unitcubegl->indexcount, GL_UNSIGNED_INT, 0);
-}
-void GLViewer::drawPoints()
-{
-	glPointSize(2);
-
-	_program->uniform("mvpMatrix") = (_camera.projectionTransform() * _camera.viewTransform()).matrix();
-
-	glBindVertexArray(_pointsgl->vao->name);
-	glDrawElements(GL_POINTS, _pointsgl->indexcount, GL_UNSIGNED_INT, 0);
-}
-void GLViewer::drawExtremePoints()
-{
-	glPointSize(5);
-
-	_program->uniform("mvpMatrix") = (_camera.projectionTransform() * _camera.viewTransform()).matrix();
-
-	glBindVertexArray(_epgl->vao->name);
-	glDrawElements(GL_POINTS, _epgl->indexcount, GL_UNSIGNED_INT, 0);
-}
-void GLViewer::drawHull()
-{
-	_program->uniform("mvpMatrix") = (_camera.projectionTransform() * _camera.viewTransform()).matrix();
-
-	glBindVertexArray(_hullgl->vao->name);
-	glDrawElements(GL_LINES, _hullgl->indexcount, GL_UNSIGNED_INT, 0);
 }
 
 void GLViewer::processWindowResize(SDL_WindowEvent& event)

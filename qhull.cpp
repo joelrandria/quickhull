@@ -26,8 +26,7 @@ QHull& QHull::operator=(QHull&& hull)
 		_pendingfaces = std::move(hull._pendingfaces);
 		_hull = std::move(hull._hull);
 
-		std::copy_n(hull.epidx, 6, epidx);
-		std::copy_n(hull.hullidx, 4, hullidx);
+		apexidx = hull.apexidx;
 	}
 
 	return *this;
@@ -36,11 +35,11 @@ QHull& QHull::operator=(QHull&& hull)
 void QHull::initialize()
 {
 	createVertices();
-	createStartTetrahedron();
+	createInitialTetrahedron();
 }
 void QHull::createVertices()
 {
-	QHullVertex* v;
+	HEVertex* v;
 
 	const int pointcount = (int)_points->size();
 
@@ -48,19 +47,19 @@ void QHull::createVertices()
 
 	for (int i = 0; i < pointcount; ++i)
 	{
-		v = new QHullVertex(_points);
+		v = new HEVertex(_points);
 		v->index = i;
 		v->edge = nullptr;
 
-		_vertices.push_back(std::unique_ptr<QHullVertex>(v));
+		_vertices.push_back(std::unique_ptr<HEVertex>(v));
 	}
 }
-void QHull::createStartTetrahedron()
+void QHull::createInitialTetrahedron()
 {
 	float d;
 	float dmax;
 	
-	//int epidx[6];
+	int epidx[6];
 	int tetraidx[4];
 
 	// Get extreme points (EP)
@@ -131,14 +130,14 @@ void QHull::createStartTetrahedron()
 
 	//! Find the most distant point from the base triangle within the point cloud to complete the initial tetrahedron
 	dmax = 0.f;
-	QHullFace* face = createFace(tetraidx[0], tetraidx[1], tetraidx[2]);
+	HEFace* tetrabase = createFace(tetraidx[0], tetraidx[1], tetraidx[2]);
 
 	for (int i = 0; i < (int)_points->size(); ++i)
 	{
 		if (i == tetraidx[0] || i == tetraidx[1] || i == tetraidx[2])
 			continue;
 		
-		if (fabs(d = face->distance((*_points)[i])) > fabs(dmax))
+		if (fabs(d = tetrabase->distance((*_points)[i])) > fabs(dmax))
 		{
 			tetraidx[3] = i;
 
@@ -148,24 +147,39 @@ void QHull::createStartTetrahedron()
 
 	//! Reverse the base triangle if not clockwise oriented according to the tetrahedron surface
 	if (dmax > 0)
-	{
-		face->reverse();
-
-		std::cout << "Base triangle reversed !" << std::endl;
-	}
+		tetrabase->reverse();
 
 	//! Complete the tetrahedron's mesh
-	_hull.push_back(face);
-	_hull.push_back(createFace(face->edge, tetraidx[3]));
-	_hull.push_back(createFace(face->edge->next, tetraidx[3]));
-	_hull.push_back(createFace(face->edge->next->next, tetraidx[3]));
+// 	QHullFace* tetrafaces[4];
+// 
+// 	tetrafaces[0] = tetrabase;
+// 	tetrafaces[1] = extrude(tetrabase->edge, tetraidx[3]);
+// 	tetrafaces[2] = extrude(tetrabase->edge->next, tetraidx[3]);
+// 	tetrafaces[3] = extrude(tetrabase->edge->next->next, tetraidx[3]);
 
 	//////////////////////////////////////////////////////////////////////////
-	// ToDO JRA: Remove this test code
+	// ToDo JRA: Remove this test code
 
-	std::copy_n(tetraidx, 4, hullidx);
+	_hull.push_back(tetrabase);
+	apexidx = tetraidx[3];
 }
 
 void QHull::iterate()
 {
+}
+
+std::vector<QHull::Face> QHull::hull() const
+{
+	std::vector<Face> faces;
+
+	faces.reserve(_hull.size());
+
+	for (int i = 0; i < (int)_hull.size(); ++i)
+		faces.push_back({
+		_hull[i]->edge->vertex->index,
+		_hull[i]->edge->next->vertex->index,
+		_hull[i]->edge->next->next->vertex->index
+	});
+
+	return faces;
 }

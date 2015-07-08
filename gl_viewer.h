@@ -29,11 +29,13 @@ private:
 	nv::SdlContext _widgets;
 
 	//! Data.
-	bool _restoreprevioussession;
 	std::vector<Point> _points;
 	QHull _qhull;
 
-	//! GL Camera.
+	//! Options
+	bool _restoreprevioussession;
+
+	//! Camera.
 	GLCamera _camera;
 
 	/************************************************************************/
@@ -43,8 +45,10 @@ private:
 	GLVertexBufferSet* _unitcubegl;		//! GL geometry: Unit cube.
 	GLVertexBufferSet* _axisgl;			//! GL geometry: Axis.
 	GLVertexBufferSet* _pointsgl;		//! GL geometry: Point cloud.
-	GLVertexBufferSet* _epgl;			//! GL geometry: Extreme points.
-	GLVertexBufferSet* _hullgl;			//! GL geometry: Convex hull.
+
+	GLVertexBufferSet* _hullglpoints;	//! GL geometry: Convex hull's points.
+	GLVertexBufferSet* _hullgledges;	//! GL geometry: Convex hull's edges.
+	GLVertexBufferSet* _hullglfaces;	//! GL geometry: Convex hull's faces.
 
 public:
 
@@ -63,20 +67,14 @@ private:
 
 	void reset();
 
-	void loadRandomPoints(std::vector<Point>& points, int count);
-	void loadPoints(std::vector<Point>& points, const std::string& filename);
+	std::vector<Point> loadRandomPoints(int count);
+	std::vector<Point> loadPoints(const std::string& filename);
 	void savePoints(std::vector<Point>& points, const std::string& filename);
 
 	void initGLGeometry();
 	void createGLGeometry();
 	void updateGLGeometry();
 	void destroyGLGeometry();
-
-	void drawUnitCube();
-	void drawAxis();
-	void drawPoints();
-	void drawExtremePoints();
-	void drawHull();
 };
 
 #endif
