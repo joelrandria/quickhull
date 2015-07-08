@@ -6,7 +6,13 @@
 #include <stack>
 #include <vector>
 #include <memory>
-#include <stdexcept>
+
+//////////////////////////////////////////////////////////////////////////
+// ToDo JRA: Remove this test code
+
+#include <unordered_map>
+
+//////////////////////////////////////////////////////////////////////////
 
 //! Quick hull algorithm implementation for convex hull.
 //! http://www.cise.ufl.edu/~ungor/courses/fall06/papers/QuickHull.pdf
@@ -14,7 +20,7 @@ class QHull
 {
 public:
 
-	//! Triangle face minimal representation.
+	//! Indexed triangle face.
 	struct Face
 	{
 		int idx[3];
@@ -76,7 +82,7 @@ private:
 	{
 	private:
 
-		gk::Vector _n;		//! Face's normal
+		gk::Vector _n;		//! Face normal
 		float _d;			//! Signed distance to the origin
 
 	public:
@@ -84,6 +90,9 @@ private:
 		HEEdge* edge;	//! One of the half-edges bordering the face
 
 		HEFace() : edge(nullptr), _d(0.f) {}
+
+		//! Get adjacent faces.
+		std::vector<HEFace*> getAdjacentFaces() const;
 
 		//! Reverse the face orientation.
 		void reverse();
@@ -117,6 +126,7 @@ private:
 
 	//////////////////////////////////////////////////////////////////////////
 	// ToDo JRA: Remove this test code
+
 public:
 
 	int apexidx;
@@ -134,7 +144,7 @@ public:
 	//! Compute one iteration.
 	void iterate();
 
-	//! Get all the faces making up the geometry hull.
+	//! Get all the faces making up the convex hull.
 	std::vector<Face> hull() const;
 
 private:
@@ -154,8 +164,21 @@ private:
 	//! Vertices are assumed to be specified in clockwise order according to the underlying surface.
 	HEFace* createFace(int v1idx, int v2idx, int v3idx);
 
-	//! Create a new managed face bordered by extruding the specified edge toward the specified vertex.
-	//QHullFace* extrude(QHullEdge* adjacentedge, int vidx);
+	//! Create new faces (fan configuration) by extruding the specified edge loop toward the specified vertex.
+	//! The target vertex is assumed to be in the specified face's negative half-space.
+	std::vector<HEFace*> extrudeOut(HEFace* face, int vidx);
+	//! Create new faces (fan configuration) by extruding the specified edge loop toward the specified vertex.
+	//! The target vertex is assumed to be in the specified edge loop's negative half-space.
+	//! The specified edge loop is assumed to be valid and clockwise oriented.
+	std::vector<HEFace*> extrudeOut(const std::vector<HEEdge*>& loop, int vidx);
+
+	//////////////////////////////////////////////////////////////////////////
+	// ToDo JRA: Remove this test code
+
+	std::vector<HEFace*> getConnectedFaces(const HEFace* face) const;
+	void getConnectedFaces(const HEFace* face, std::unordered_map<HEFace*, HEFace*>& faceRegistry) const;
+
+	void checkManifold(const HEFace* face) const;
 };
 
 inline QHull::HEEdge* QHull::createEdge()
@@ -211,46 +234,94 @@ inline QHull::HEFace* QHull::createFace(int v1idx, int v2idx, int v3idx)
 	return face;
 }
 
-// inline QHull::QHullFace* QHull::extrude(QHullEdge* adjacentedge, int vidx)
-// {
-// 	if (adjacentedge->pair)
-// 		throw std::logic_error("QHull::extrude(): A face already exists at the specified location");
-// 
-// 	// Build the mesh
-// 	QHullFace* face = createFace();
-// 
-// 	QHullEdge* edge1 = createEdge();
-// 	QHullEdge* edge2 = createEdge();
-// 	QHullEdge* edge3 = createEdge();
-// 
-// 	QHullVertex* v1 = adjacentedge->vertex;
-// 	QHullVertex* v2 = adjacentedge->next->next->vertex;
-// 	QHullVertex* v3 = _vertices[vidx].get();
-// 
-// 	edge1->vertex = v3;
-// 	edge1->next = edge2;
-// 	edge1->face = face;
-// 
-// 	edge2->vertex = v1;
-// 	edge2->next = edge3;
-// 	edge2->face = face;
-// 
-// 	edge3->vertex = v2;
-// 	edge3->next = edge1;
-// 	edge3->face = face;
-// 
-// 	v3->edge = edge2;
-// 
-// 	adjacentedge->pair = edge3;
-// 	edge3->pair = adjacentedge;
-// 
-// 	face->edge = edge3;
-// 
-// 	// Compute the support <N,D> plane
-// 	face->updateSupportPlane();
-// 
-// 	return face;
-// }
+inline std::vector<QHull::HEFace*> QHull::extrudeOut(QHull::HEFace* face, int vidx)
+{
+	return extrudeOut({ face->edge, face->edge->next, face->edge->next->next }, vidx);
+}
+inline std::vector<QHull::HEFace*> QHull::extrudeOut(const std::vector<QHull::HEEdge*>& loop, int vidx)
+{
+	std::vector<HEFace*> faces;
+
+	HEEdge* lastedge2 = nullptr;
+	HEEdge* firstedge1 = nullptr;
+
+	HEVertex* v3 = _vertices[vidx].get();
+
+	faces.reserve(loop.size());
+
+	for (int i = 0; i < (int)loop.size(); ++i)
+	{
+		HEEdge* edge = loop[i];
+
+		assert(!edge->pair && "Specified edge already has a conjugate face");
+
+		// Build the mesh
+		HEFace* face = createFace();
+
+		HEEdge* edge1 = createEdge();
+		HEEdge* edge2 = createEdge();
+		HEEdge* edge3 = createEdge();
+
+		HEVertex* v1 = edge->vertex;
+		HEVertex* v2 = edge->next->next->vertex;
+
+		edge1->vertex = v3;
+		edge1->next = edge2;
+		edge1->face = face;
+
+		edge2->vertex = v1;
+		edge2->next = edge3;
+		edge2->face = face;
+
+		edge3->vertex = v2;
+		edge3->next = edge1;
+		edge3->face = face;
+
+		if (!v3->edge)
+			v3->edge = edge2;
+
+		face->edge = edge3;
+
+		// Compute the support <N,D> plane
+		face->updateSupportPlane();
+
+		// Sew adjacent faces
+		edge->pair = edge3;
+		edge3->pair = edge;
+
+		if (lastedge2)
+		{
+			lastedge2->pair = edge1;
+			edge1->pair = lastedge2;
+		}
+		lastedge2 = edge2;
+
+		if (!firstedge1)
+			firstedge1 = edge1;
+
+		faces.push_back(face);
+	}
+
+	// Sew first and last faces
+	lastedge2->pair = firstedge1;
+	firstedge1->pair = lastedge2;
+
+	return faces;
+}
+
+inline std::vector<QHull::HEFace*> QHull::HEFace::getAdjacentFaces() const
+{
+	std::vector<HEFace*> adjacentfaces;
+
+	if (edge->pair)
+		adjacentfaces.push_back(edge->pair->face);
+	if (edge->next->pair)
+		adjacentfaces.push_back(edge->next->pair->face);
+	if (edge->next->next->pair)
+		adjacentfaces.push_back(edge->next->next->pair->face);
+
+	return adjacentfaces;
+}
 
 inline void QHull::HEFace::reverse()
 {

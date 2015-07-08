@@ -150,18 +150,72 @@ void QHull::createInitialTetrahedron()
 		tetrabase->reverse();
 
 	//! Complete the tetrahedron's mesh
-// 	QHullFace* tetrafaces[4];
-// 
-// 	tetrafaces[0] = tetrabase;
-// 	tetrafaces[1] = extrude(tetrabase->edge, tetraidx[3]);
-// 	tetrafaces[2] = extrude(tetrabase->edge->next, tetraidx[3]);
-// 	tetrafaces[3] = extrude(tetrabase->edge->next->next, tetraidx[3]);
+	std::vector<HEFace*> tetrafaces = extrudeOut(tetrabase, tetraidx[3]);
 
+	//! Store current faces
+	_hull.push_back(tetrabase);
+	_hull.insert(_hull.end(), tetrafaces.begin(), tetrafaces.end());
+	
 	//////////////////////////////////////////////////////////////////////////
 	// ToDo JRA: Remove this test code
 
-	_hull.push_back(tetrabase);
 	apexidx = tetraidx[3];
+
+	checkManifold(tetrabase);
+}
+
+std::vector<QHull::HEFace*> QHull::getConnectedFaces(const HEFace* face) const
+{
+	std::vector<HEFace*> connectedfaces;
+	std::unordered_map<HEFace*, HEFace*> faceregistry;
+
+	getConnectedFaces(face, faceregistry);
+
+	connectedfaces.reserve(faceregistry.size());
+	for (auto it = faceregistry.begin(); it != faceregistry.end(); ++it)
+		connectedfaces.push_back(it->second);
+
+	return connectedfaces;
+}
+void QHull::getConnectedFaces(const HEFace* face, std::unordered_map<HEFace*, HEFace*>& faceRegistry) const
+{
+	if (faceRegistry.count((HEFace*)face))
+		return;
+
+	faceRegistry[(HEFace*)face] = (HEFace*)face;
+
+	std::vector<HEFace*> adjacentfaces = face->getAdjacentFaces();
+	for (int i = 0; i < (int)adjacentfaces.size(); ++i)
+		getConnectedFaces(adjacentfaces[i], faceRegistry);
+}
+
+void QHull::checkManifold(const HEFace* face) const
+{
+	// Get all connected faces
+	std::vector<QHull::HEFace*> mesh = getConnectedFaces(face);
+	if (mesh.size() != 4)
+		throw new std::logic_error("Invalid manifold: Bad face count");	
+
+	for (int f = 0; f < mesh.size(); ++f)
+	{
+		HEFace* face = mesh[f];
+
+		// Check edge circularity
+		if (face->edge != face->edge->next->next->next)
+			throw new std::logic_error("Invalid manifold: Face's edges not circular");
+
+		// Check co-edges
+		HEEdge* edge = face->edge;
+		for (int e = 0; e < 3; ++e)
+		{
+			if (!edge->pair)
+				throw new std::logic_error("Invalid manifold: Co-edge NULL");
+			if (edge->pair->pair != edge)
+				throw new std::logic_error("Invalid manifold: Co-edges not symmetrical");
+
+			edge = edge->next;
+		}
+	}
 }
 
 void QHull::iterate()

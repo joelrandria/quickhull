@@ -46,9 +46,9 @@ private:
 	GLVertexBufferSet* _axisgl;			//! GL geometry: Axis.
 	GLVertexBufferSet* _pointsgl;		//! GL geometry: Point cloud.
 
-	GLVertexBufferSet* _hullglpoints;	//! GL geometry: Convex hull's points.
-	GLVertexBufferSet* _hullgledges;	//! GL geometry: Convex hull's edges.
-	GLVertexBufferSet* _hullglfaces;	//! GL geometry: Convex hull's faces.
+	GLVertexBufferSet* _hullglpoints;	//! GL geometry: Convex hull points.
+	GLVertexBufferSet* _hullglfaces;	//! GL geometry: Convex hull faces.
+	GLVertexBufferSet* _hullgledges;	//! GL geometry: Convex hull edges.
 
 public:
 
