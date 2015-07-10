@@ -1,11 +1,8 @@
 #include "qhull.h"
 
-QHull::QHull()
-	: _points(nullptr)
-{
-}
 QHull::QHull(const std::vector<gk::Point>* points)
-	: _points(points)
+	: _points(points),
+	_iterationid(-1)
 {
 	initialize();
 }
@@ -23,10 +20,10 @@ QHull& QHull::operator=(QHull&& hull)
 		_vertices = std::move(hull._vertices);
 		_edges = std::move(hull._edges);
 		_faces = std::move(hull._faces);
-		_pendingfaces = std::move(hull._pendingfaces);
+		_processingfaces = std::move(hull._processingfaces);
 		_hull = std::move(hull._hull);
 
-		apexidx = hull.apexidx;
+		_iterationid = hull._iterationid;
 	}
 
 	return *this;
@@ -128,7 +125,7 @@ void QHull::createInitialTetrahedron()
 		}
 	}
 
-	//! Find the most distant point from the base triangle within the point cloud to complete the initial tetrahedron
+	// Find the most distant point from the base triangle within the point cloud to complete the initial tetrahedron
 	dmax = 0.f;
 	HEFace* tetrabase = createFace(tetraidx[0], tetraidx[1], tetraidx[2]);
 
@@ -145,94 +142,53 @@ void QHull::createInitialTetrahedron()
 		}
 	}
 
-	//! Reverse the base triangle if not clockwise oriented according to the tetrahedron surface
+	// Reverse the base triangle if not counter clockwise oriented according to the tetrahedron outer surface
 	if (dmax > 0)
 		tetrabase->reverse();
 
-	//! Complete the tetrahedron's mesh
+	// Complete the tetrahedron's mesh
 	std::vector<HEFace*> tetrafaces = extrudeOut(tetrabase, tetraidx[3]);
+	tetrafaces.insert(tetrafaces.begin(), tetrabase);
 
-	//! Store current faces
-	_hull.push_back(tetrabase);
-	_hull.insert(_hull.end(), tetrafaces.begin(), tetrafaces.end());
-	
+	// Assign remaining points to their corresponding face
+	for (int i = 0; i < (int)_points->size(); ++i)
+	{
+		if (i == tetraidx[0] || i == tetraidx[1] || i == tetraidx[2] || i == tetraidx[3])
+			continue;
+
+		for (int f = 0; f < (int)tetrafaces.size(); ++f)
+		{
+			if (tetrafaces[f]->tryAssignVertex(_vertices[i].get()))
+				break;
+		}
+	}
+
+	//! Add the tetrahedron's not empty faces to the processing stack
+	for (int i = 0; i < (int)tetrafaces.size(); ++i)
+		if (!tetrafaces[i]->vertices.empty())
+			_processingfaces.push(tetrafaces[i]);
+
+	// Store hull first vertex
+	_hull = _vertices[tetraidx[0]].get();
+
 	//////////////////////////////////////////////////////////////////////////
 	// ToDo JRA: Remove this test code
 
-	apexidx = tetraidx[3];
-
-	checkManifold(tetrabase);
-}
-
-std::vector<QHull::HEFace*> QHull::getConnectedFaces(const HEFace* face) const
-{
-	std::vector<HEFace*> connectedfaces;
-	std::unordered_map<HEFace*, HEFace*> faceregistry;
-
-	getConnectedFaces(face, faceregistry);
-
-	connectedfaces.reserve(faceregistry.size());
-	for (auto it = faceregistry.begin(); it != faceregistry.end(); ++it)
-		connectedfaces.push_back(it->second);
-
-	return connectedfaces;
-}
-void QHull::getConnectedFaces(const HEFace* face, std::unordered_map<HEFace*, HEFace*>& faceRegistry) const
-{
-	if (faceRegistry.count((HEFace*)face))
-		return;
-
-	faceRegistry[(HEFace*)face] = (HEFace*)face;
-
-	std::vector<HEFace*> adjacentfaces = face->getAdjacentFaces();
-	for (int i = 0; i < (int)adjacentfaces.size(); ++i)
-		getConnectedFaces(adjacentfaces[i], faceRegistry);
-}
-
-void QHull::checkManifold(const HEFace* face) const
-{
-	// Get all connected faces
-	std::vector<QHull::HEFace*> mesh = getConnectedFaces(face);
-	if (mesh.size() != 4)
-		throw new std::logic_error("Invalid manifold: Bad face count");	
-
-	for (int f = 0; f < mesh.size(); ++f)
-	{
-		HEFace* face = mesh[f];
-
-		// Check edge circularity
-		if (face->edge != face->edge->next->next->next)
-			throw new std::logic_error("Invalid manifold: Face's edges not circular");
-
-		// Check co-edges
-		HEEdge* edge = face->edge;
-		for (int e = 0; e < 3; ++e)
-		{
-			if (!edge->pair)
-				throw new std::logic_error("Invalid manifold: Co-edge NULL");
-			if (edge->pair->pair != edge)
-				throw new std::logic_error("Invalid manifold: Co-edges not symmetrical");
-
-			edge = edge->next;
-		}
-	}
-}
-
-void QHull::iterate()
-{
+	assertManifoldValidity(_hull);
 }
 
 std::vector<QHull::Face> QHull::hull() const
 {
 	std::vector<Face> faces;
+	std::vector<HEFace*> hullfaces = _hull->getConnectedFaces();
 
-	faces.reserve(_hull.size());
+	faces.reserve(hullfaces.size());
 
-	for (int i = 0; i < (int)_hull.size(); ++i)
+	for (int i = 0; i < (int)hullfaces.size(); ++i)
 		faces.push_back({
-		_hull[i]->edge->vertex->index,
-		_hull[i]->edge->next->vertex->index,
-		_hull[i]->edge->next->next->vertex->index
+		hullfaces[i]->edge->vertex->index,
+		hullfaces[i]->edge->next->vertex->index,
+		hullfaces[i]->edge->next->next->vertex->index
 	});
 
 	return faces;

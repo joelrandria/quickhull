@@ -55,6 +55,8 @@ void GLViewer::reset()
 
 	// Build convex hull
 	_qhull = QHull(&_points);
+	
+	std::cout << "Convex hull built in " << _qhull.build() << " iterations" << std::endl;
 
 	// Create GL geometry
 	updateGLGeometry();
@@ -133,9 +135,10 @@ void GLViewer::initGLGeometry()
 	_axisgl = nullptr;
 	_pointsgl = nullptr;
 
-	_hullglpoints = nullptr;
+	_hullglvertices = nullptr;
 	_hullglfaces = nullptr;
 	_hullgledges = nullptr;
+	_hullglfacesextremes = nullptr;
 }
 void GLViewer::createGLGeometry()
 {
@@ -220,7 +223,7 @@ void GLViewer::createGLGeometry()
 
 	_pointsgl->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
 
-	// Hull points
+	// Hull vertices
 	std::vector<QHull::Face> hull = _qhull.hull();
 
 	colors = std::vector<gk::Vec4>(_points.size(), gk::Vec4(1, 1, 0, 1));
@@ -232,21 +235,20 @@ void GLViewer::createGLGeometry()
 		indices[(i * 3) + 1] = (unsigned int)(hull[i].idx[1]);
 		indices[(i * 3) + 2] = (unsigned int)(hull[i].idx[2]);
 	}
-	indices.push_back((unsigned int)_qhull.apexidx);
 
-	_hullglpoints = new GLVertexBufferSet();
-	_hullglpoints->vao = createGLUnmanagedVertexArray();
-	_hullglpoints->indexcount = (unsigned int)indices.size();
+	_hullglvertices = new GLVertexBufferSet();
+	_hullglvertices->vao = createGLUnmanagedVertexArray();
+	_hullglvertices->indexcount = (unsigned int)indices.size();
 
-	_hullglpoints->positions = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, _points);
+	_hullglvertices->positions = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, _points);
 	glVertexAttribPointer(_program->attribute("vertex_position"), 3, GL_FLOAT, GL_FALSE, 0, 0);
 	glEnableVertexAttribArray(_program->attribute("vertex_position"));
 
-	_hullglpoints->colors = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, colors);
+	_hullglvertices->colors = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, colors);
 	glVertexAttribPointer(_program->attribute("vertex_color"), 4, GL_FLOAT, GL_FALSE, 0, 0);
 	glEnableVertexAttribArray(_program->attribute("vertex_color"));
 
-	_hullglpoints->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
+	_hullglvertices->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
 
 	// Hull faces
 	std::vector<gk::Point> hullvertices;
@@ -258,8 +260,7 @@ void GLViewer::createGLGeometry()
 		hullvertices.push_back(_points[hull[i].idx[2]]);
 	}
 
-	colors = std::vector<gk::Vec4>(hullvertices.size() - 3, gk::Vec4(1, 0, 0, 1));
-	colors.insert(colors.begin(), 3, gk::Vec4(0, 0, 1, 1));
+	colors = std::vector<gk::Vec4>(hullvertices.size(), gk::Vec4(1, 0, 0, 1));
 
 	indices.resize(hull.size() * 3);
 	std::iota(indices.begin(), indices.end(), 0);
@@ -307,6 +308,31 @@ void GLViewer::createGLGeometry()
 	glEnableVertexAttribArray(_program->attribute("vertex_color"));
 
 	_hullgledges->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
+
+	// Hull faces extremes
+	std::vector<int> facesextremes = _qhull.getFacesExtremesIndices();
+	if (!facesextremes.empty())
+	{
+		colors = std::vector<gk::Vec4>(_points.size(), gk::Vec4(1, 1, 0, 1));
+
+		indices.resize(facesextremes.size());
+		for (int i = 0; i < (int)facesextremes.size(); ++i)
+			indices[i] = (unsigned int)facesextremes[i];
+
+		_hullglfacesextremes = new GLVertexBufferSet();
+		_hullglfacesextremes->vao = createGLUnmanagedVertexArray();
+		_hullglfacesextremes->indexcount = (unsigned int)indices.size();
+
+		_hullglfacesextremes->positions = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, _points);
+		glVertexAttribPointer(_program->attribute("vertex_position"), 3, GL_FLOAT, GL_FALSE, 0, 0);
+		glEnableVertexAttribArray(_program->attribute("vertex_position"));
+
+		_hullglfacesextremes->colors = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, colors);
+		glVertexAttribPointer(_program->attribute("vertex_color"), 4, GL_FLOAT, GL_FALSE, 0, 0);
+		glEnableVertexAttribArray(_program->attribute("vertex_color"));
+
+		_hullglfacesextremes->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
+	}
 }
 void GLViewer::updateGLGeometry()
 {
@@ -335,10 +361,10 @@ void GLViewer::destroyGLGeometry()
 		_pointsgl = nullptr;
 	}
 
-	if (_hullglpoints)
+	if (_hullglvertices)
 	{
-		delete _hullglpoints;
-		_hullglpoints = nullptr;
+		delete _hullglvertices;
+		_hullglvertices = nullptr;
 	}
 	if (_hullglfaces)
 	{
@@ -350,13 +376,18 @@ void GLViewer::destroyGLGeometry()
 		delete _hullgledges;
 		_hullgledges = nullptr;
 	}
+	if (_hullglfacesextremes)
+	{
+		delete _hullglfacesextremes;
+		_hullglfacesextremes = nullptr;
+	}
 
 	initGLGeometry();
 }
 
 int GLViewer::draw()
 {
-	// Keyboard
+	// Keyboard: General
 	if (key(SDLK_ESCAPE))
 		closeWindow();
 	if (key('r'))
@@ -370,20 +401,7 @@ int GLViewer::draw()
 		gk::writeFramebuffer("screenshot.png");
 	}
 
-	if (key('i'))
-	{
-		key('i') = 0;
-
-		_restoreprevioussession = false;
-		reset();
-	}
-	if (key('v'))
-	{
-		key('v') = 0;
-
-		_camera.print();
-	}
-
+	// Keyboard: Camera navigation
 	if (key(SDLK_z))
 	{
 		key(SDLK_z) = 0;
@@ -415,7 +433,31 @@ int GLViewer::draw()
 		_camera.localTranslate(gk::Vector(0, -_camera.moveUnit, 0));
 	}
 
-	// 3D geometry
+	// Keyboard: Algorithm
+	if (key(SDLK_KP_PLUS))
+	{
+		key(SDLK_KP_PLUS) = 0;
+
+		_qhull.iterate();
+		updateGLGeometry();
+	}
+
+	// Keyboard: Misc
+	if (key('i'))
+	{
+		key('i') = 0;
+
+		_restoreprevioussession = false;
+		reset();
+	}
+	if (key('v'))
+	{
+		key('v') = 0;
+
+		_camera.print();
+	}
+
+	// 3D geometry rendering
 	glViewport(0, 0, windowWidth(), windowHeight());
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -439,11 +481,11 @@ int GLViewer::draw()
 	glBindVertexArray(_pointsgl->vao->name);
 	glDrawElements(GL_POINTS, _pointsgl->indexcount, GL_UNSIGNED_INT, 0);
 
-	// Hull points
+	// Hull vertices
 	glPointSize(6);
 
-	glBindVertexArray(_hullglpoints->vao->name);
-	glDrawElements(GL_POINTS, _hullglpoints->indexcount, GL_UNSIGNED_INT, 0);
+	glBindVertexArray(_hullglvertices->vao->name);
+	glDrawElements(GL_POINTS, _hullglvertices->indexcount, GL_UNSIGNED_INT, 0);
 
 	// Hull faces
 	glBindVertexArray(_hullglfaces->vao->name);
@@ -454,6 +496,15 @@ int GLViewer::draw()
 
 	glBindVertexArray(_hullgledges->vao->name);
 	glDrawElements(GL_LINES, _hullgledges->indexcount, GL_UNSIGNED_INT, 0);
+
+	// Hull faces extreme points
+	if (_hullglfacesextremes)
+	{
+		glPointSize(6);
+
+		glBindVertexArray(_hullglfacesextremes->vao->name);
+		glDrawElements(GL_POINTS, _hullglfacesextremes->indexcount, GL_UNSIGNED_INT, 0);
+	}
 
 	//	GL cleaning
 	glUseProgram(0);

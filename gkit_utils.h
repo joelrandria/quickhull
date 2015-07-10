@@ -77,7 +77,7 @@ template < typename T >
 gk::GLBuffer *createGLUnmanagedBuffer(const GLenum target, const std::vector<T>& data,
 	const GLenum usage = GL_STATIC_DRAW)
 {
-	const unsigned int _length = data.size() * sizeof(T);
+	const unsigned int _length = (unsigned int)(data.size() * sizeof(T));
 
 	gk::GLBuffer* glbuffer = new gk::GLBuffer();
 
