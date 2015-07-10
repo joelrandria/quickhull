@@ -104,6 +104,7 @@ void QHull::createInitialTetrahedron()
 
 	// Find the most distant EP from the first edge's support line to complete the base triangle
 	dmax = 0.f;
+	tetraidx[2] = -1;
 
 	const gk::Point& t0 = (*_points)[tetraidx[0]];
 	gk::Vector t01 = gk::Normalize(gk::Vector(t0, (*_points)[tetraidx[1]]));
@@ -122,6 +123,19 @@ void QHull::createInitialTetrahedron()
 			tetraidx[2] = epidx[i];
 
 			dmax = d;
+		}
+	}
+
+	// Special case where there are only 2 extreme points => Pick any remaining point
+	if (tetraidx[2] < 0)
+	{
+		for (int i = 0; i < (int)_points->size(); ++i)
+		{
+			if (i != tetraidx[0] && i != tetraidx[1])
+			{
+				tetraidx[2] = i;
+				break;
+			}
 		}
 	}
 
