@@ -54,9 +54,9 @@ void GLViewer::reset()
 	}
 
 	// Build convex hull
-	_qhull = QHull(&_points);
+	_qhull.initialize(&_points);
 	
-	//std::cout << "Convex hull built in " << _qhull.build() << " iterations" << std::endl;
+	std::cout << "Convex hull built in " << _qhull.build() << " iterations" << std::endl;
 
 	// Create GL geometry
 	updateGLGeometry();
@@ -224,114 +224,116 @@ void GLViewer::createGLGeometry()
 	_pointsgl->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
 
 	// Hull vertices
-	std::vector<QHull::Face> hull = _qhull.hull();
-
-	colors = std::vector<gk::Vec4>(_points.size(), gk::Vec4(1, 1, 0, 1));
-
-	indices.resize(hull.size() * 3);
-	for (int i = 0; i < (int)hull.size(); ++i)
-	{
-		indices[i * 3] = (unsigned int)(hull[i].idx[0]);
-		indices[(i * 3) + 1] = (unsigned int)(hull[i].idx[1]);
-		indices[(i * 3) + 2] = (unsigned int)(hull[i].idx[2]);
-	}
-
-	_hullglvertices = new GLVertexBufferSet();
-	_hullglvertices->vao = createGLUnmanagedVertexArray();
-	_hullglvertices->indexcount = (unsigned int)indices.size();
-
-	_hullglvertices->positions = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, _points);
-	glVertexAttribPointer(_program->attribute("vertex_position"), 3, GL_FLOAT, GL_FALSE, 0, 0);
-	glEnableVertexAttribArray(_program->attribute("vertex_position"));
-
-	_hullglvertices->colors = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, colors);
-	glVertexAttribPointer(_program->attribute("vertex_color"), 4, GL_FLOAT, GL_FALSE, 0, 0);
-	glEnableVertexAttribArray(_program->attribute("vertex_color"));
-
-	_hullglvertices->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
-
-	// Hull faces
-	std::vector<gk::Point> hullvertices;
-	hullvertices.reserve(hull.size() * 3);
-	for (int i = 0; i < (int)hull.size(); ++i)
-	{
-		hullvertices.push_back(_points[hull[i].idx[0]]);
-		hullvertices.push_back(_points[hull[i].idx[1]]);
-		hullvertices.push_back(_points[hull[i].idx[2]]);
-	}
-
-	colors = std::vector<gk::Vec4>(hullvertices.size(), gk::Vec4(1, 0, 0, 1));
-
-	indices.resize(hull.size() * 3);
-	std::iota(indices.begin(), indices.end(), 0);
-
-	_hullglfaces = new GLVertexBufferSet();
-	_hullglfaces->vao = createGLUnmanagedVertexArray();
-	_hullglfaces->indexcount = (unsigned int)indices.size();
-
-	_hullglfaces->positions = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, hullvertices);
-	glVertexAttribPointer(_program->attribute("vertex_position"), 3, GL_FLOAT, GL_FALSE, 0, 0);
-	glEnableVertexAttribArray(_program->attribute("vertex_position"));
-
-	_hullglfaces->colors = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, colors);
-	glVertexAttribPointer(_program->attribute("vertex_color"), 4, GL_FLOAT, GL_FALSE, 0, 0);
-	glEnableVertexAttribArray(_program->attribute("vertex_color"));
-
-	_hullglfaces->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
-
-	// Hull edges
-	colors = std::vector<gk::Vec4>(_points.size(), gk::Vec4(1, 1, 1, 1));
-
-	indices.resize(hull.size() * 6);
-	for (int i = 0; i < (int)hull.size(); ++i)
-	{
-		indices[i * 6] = (unsigned int)(hull[i].idx[0]);
-		indices[(i * 6) + 1] = (unsigned int)(hull[i].idx[1]);
-
-		indices[(i * 6) + 2] = (unsigned int)(hull[i].idx[1]);
-		indices[(i * 6) + 3] = (unsigned int)(hull[i].idx[2]);
-
-		indices[(i * 6) + 4] = (unsigned int)(hull[i].idx[2]);
-		indices[(i * 6) + 5] = (unsigned int)(hull[i].idx[0]);
-	}
-
-	_hullgledges = new GLVertexBufferSet();
-	_hullgledges->vao = createGLUnmanagedVertexArray();
-	_hullgledges->indexcount = (unsigned int)indices.size();
-
-	_hullgledges->positions = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, _points);
-	glVertexAttribPointer(_program->attribute("vertex_position"), 3, GL_FLOAT, GL_FALSE, 0, 0);
-	glEnableVertexAttribArray(_program->attribute("vertex_position"));
-
-	_hullgledges->colors = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, colors);
-	glVertexAttribPointer(_program->attribute("vertex_color"), 4, GL_FLOAT, GL_FALSE, 0, 0);
-	glEnableVertexAttribArray(_program->attribute("vertex_color"));
-
-	_hullgledges->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
-
-	// Hull faces extremes
-	std::vector<int> facesextremes = _qhull.getFacesExtremesIndices();
-	if (!facesextremes.empty())
+	std::vector<QHull3d::Face> hull = _qhull.hull();
+	if (!hull.empty())
 	{
 		colors = std::vector<gk::Vec4>(_points.size(), gk::Vec4(1, 1, 0, 1));
 
-		indices.resize(facesextremes.size());
-		for (int i = 0; i < (int)facesextremes.size(); ++i)
-			indices[i] = (unsigned int)facesextremes[i];
+		indices.resize(hull.size() * 3);
+		for (int i = 0; i < (int)hull.size(); ++i)
+		{
+			indices[i * 3] = (unsigned int)(hull[i].idx[0]);
+			indices[(i * 3) + 1] = (unsigned int)(hull[i].idx[1]);
+			indices[(i * 3) + 2] = (unsigned int)(hull[i].idx[2]);
+		}
 
-		_hullglfacesextremes = new GLVertexBufferSet();
-		_hullglfacesextremes->vao = createGLUnmanagedVertexArray();
-		_hullglfacesextremes->indexcount = (unsigned int)indices.size();
+		_hullglvertices = new GLVertexBufferSet();
+		_hullglvertices->vao = createGLUnmanagedVertexArray();
+		_hullglvertices->indexcount = (unsigned int)indices.size();
 
-		_hullglfacesextremes->positions = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, _points);
+		_hullglvertices->positions = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, _points);
 		glVertexAttribPointer(_program->attribute("vertex_position"), 3, GL_FLOAT, GL_FALSE, 0, 0);
 		glEnableVertexAttribArray(_program->attribute("vertex_position"));
 
-		_hullglfacesextremes->colors = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, colors);
+		_hullglvertices->colors = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, colors);
 		glVertexAttribPointer(_program->attribute("vertex_color"), 4, GL_FLOAT, GL_FALSE, 0, 0);
 		glEnableVertexAttribArray(_program->attribute("vertex_color"));
 
-		_hullglfacesextremes->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
+		_hullglvertices->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
+
+		// Hull faces
+		std::vector<gk::Point> hullvertices;
+		hullvertices.reserve(hull.size() * 3);
+		for (int i = 0; i < (int)hull.size(); ++i)
+		{
+			hullvertices.push_back(_points[hull[i].idx[0]]);
+			hullvertices.push_back(_points[hull[i].idx[1]]);
+			hullvertices.push_back(_points[hull[i].idx[2]]);
+		}
+
+		colors = std::vector<gk::Vec4>(hullvertices.size(), gk::Vec4(1, 0, 0, 1));
+
+		indices.resize(hull.size() * 3);
+		std::iota(indices.begin(), indices.end(), 0);
+
+		_hullglfaces = new GLVertexBufferSet();
+		_hullglfaces->vao = createGLUnmanagedVertexArray();
+		_hullglfaces->indexcount = (unsigned int)indices.size();
+
+		_hullglfaces->positions = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, hullvertices);
+		glVertexAttribPointer(_program->attribute("vertex_position"), 3, GL_FLOAT, GL_FALSE, 0, 0);
+		glEnableVertexAttribArray(_program->attribute("vertex_position"));
+
+		_hullglfaces->colors = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, colors);
+		glVertexAttribPointer(_program->attribute("vertex_color"), 4, GL_FLOAT, GL_FALSE, 0, 0);
+		glEnableVertexAttribArray(_program->attribute("vertex_color"));
+
+		_hullglfaces->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
+
+		// Hull edges
+		colors = std::vector<gk::Vec4>(_points.size(), gk::Vec4(1, 1, 1, 1));
+
+		indices.resize(hull.size() * 6);
+		for (int i = 0; i < (int)hull.size(); ++i)
+		{
+			indices[i * 6] = (unsigned int)(hull[i].idx[0]);
+			indices[(i * 6) + 1] = (unsigned int)(hull[i].idx[1]);
+
+			indices[(i * 6) + 2] = (unsigned int)(hull[i].idx[1]);
+			indices[(i * 6) + 3] = (unsigned int)(hull[i].idx[2]);
+
+			indices[(i * 6) + 4] = (unsigned int)(hull[i].idx[2]);
+			indices[(i * 6) + 5] = (unsigned int)(hull[i].idx[0]);
+		}
+
+		_hullgledges = new GLVertexBufferSet();
+		_hullgledges->vao = createGLUnmanagedVertexArray();
+		_hullgledges->indexcount = (unsigned int)indices.size();
+
+		_hullgledges->positions = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, _points);
+		glVertexAttribPointer(_program->attribute("vertex_position"), 3, GL_FLOAT, GL_FALSE, 0, 0);
+		glEnableVertexAttribArray(_program->attribute("vertex_position"));
+
+		_hullgledges->colors = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, colors);
+		glVertexAttribPointer(_program->attribute("vertex_color"), 4, GL_FLOAT, GL_FALSE, 0, 0);
+		glEnableVertexAttribArray(_program->attribute("vertex_color"));
+
+		_hullgledges->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
+
+		// Hull faces extremes
+		std::vector<int> facesextremes = _qhull.getFacesExtremesIndices();
+		if (!facesextremes.empty())
+		{
+			colors = std::vector<gk::Vec4>(_points.size(), gk::Vec4(1, 1, 0, 1));
+
+			indices.resize(facesextremes.size());
+			for (int i = 0; i < (int)facesextremes.size(); ++i)
+				indices[i] = (unsigned int)facesextremes[i];
+
+			_hullglfacesextremes = new GLVertexBufferSet();
+			_hullglfacesextremes->vao = createGLUnmanagedVertexArray();
+			_hullglfacesextremes->indexcount = (unsigned int)indices.size();
+
+			_hullglfacesextremes->positions = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, _points);
+			glVertexAttribPointer(_program->attribute("vertex_position"), 3, GL_FLOAT, GL_FALSE, 0, 0);
+			glEnableVertexAttribArray(_program->attribute("vertex_position"));
+
+			_hullglfacesextremes->colors = createGLUnmanagedBuffer(GL_ARRAY_BUFFER, colors);
+			glVertexAttribPointer(_program->attribute("vertex_color"), 4, GL_FLOAT, GL_FALSE, 0, 0);
+			glEnableVertexAttribArray(_program->attribute("vertex_color"));
+
+			_hullglfacesextremes->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
+		}
 	}
 }
 void GLViewer::updateGLGeometry()
@@ -482,20 +484,29 @@ int GLViewer::draw()
 	glDrawElements(GL_POINTS, _pointsgl->indexcount, GL_UNSIGNED_INT, 0);
 
 	// Hull vertices
-	glPointSize(6);
+	if (_hullglvertices)
+	{
+		glPointSize(6);
 
-	glBindVertexArray(_hullglvertices->vao->name);
-	glDrawElements(GL_POINTS, _hullglvertices->indexcount, GL_UNSIGNED_INT, 0);
+		glBindVertexArray(_hullglvertices->vao->name);
+		glDrawElements(GL_POINTS, _hullglvertices->indexcount, GL_UNSIGNED_INT, 0);
+	}
 
 	// Hull faces
-	glBindVertexArray(_hullglfaces->vao->name);
-	glDrawElements(GL_TRIANGLES, _hullglfaces->indexcount, GL_UNSIGNED_INT, 0);
+	if (_hullglfaces)
+	{
+		glBindVertexArray(_hullglfaces->vao->name);
+		glDrawElements(GL_TRIANGLES, _hullglfaces->indexcount, GL_UNSIGNED_INT, 0);
+	}
 
 	// Hull edges
-	glLineWidth(2);
+	if (_hullgledges)
+	{
+		glLineWidth(2);
 
-	glBindVertexArray(_hullgledges->vao->name);
-	glDrawElements(GL_LINES, _hullgledges->indexcount, GL_UNSIGNED_INT, 0);
+		glBindVertexArray(_hullgledges->vao->name);
+		glDrawElements(GL_LINES, _hullgledges->indexcount, GL_UNSIGNED_INT, 0);
+	}
 
 	// Hull faces extreme points
 	if (_hullglfacesextremes)

@@ -3,7 +3,7 @@
 
 #include "gl_camera.h"
 #include "gkit_utils.h"
-#include "qhull.h"
+#include "qhull_3d.h"
 
 #include <App.h>
 #include <Geometry.h>
@@ -30,7 +30,7 @@ private:
 
 	//! Data.
 	std::vector<Point> _points;
-	QHull _qhull;
+	QHull3d _qhull;
 
 	//! Options
 	bool _restoreprevioussession;
