@@ -148,7 +148,8 @@ void QHull::createInitialTetrahedron()
 		if (i == tetraidx[0] || i == tetraidx[1] || i == tetraidx[2])
 			continue;
 		
-		if (fabs(d = tetrabase->distance((*_points)[i])) > fabs(dmax))
+		//if (fabs(d = tetrabase->distance((*_points)[i])) > fabs(dmax))
+		if (fabs(d = tetrabase->distance((*_points)[i])) >= fabs(dmax))
 		{
 			tetraidx[3] = i;
 

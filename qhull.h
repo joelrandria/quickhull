@@ -315,7 +315,8 @@ inline bool QHull::HEFace::tryAssignVertex(QHull::HEVertex* v)
 	if ((d = distance(v->getPoint())) < 0)
 		return false;
 
-	if (d > _extremedistance)
+	//if (d > _extremedistance)
+	if (d >= _extremedistance)
 	{
 		vertices.insert(vertices.begin(), v);
 
@@ -667,7 +668,8 @@ inline void QHull::getVisibleUnvisitedConnectedFaces(const int iterationId, cons
 	{
 		HEFace* adjacentface = adjacentfaces[i];
 
-		if (adjacentface->iterationid != iterationId && adjacentface->distance(p) > 0)
+		//if (adjacentface->iterationid != iterationId && adjacentface->distance(p) > 0)
+		if (adjacentface->iterationid != iterationId && adjacentface->distance(p) >= 0)
 		{
 			adjacentface->iterationid = iterationId;
 			visiblefaces.push_back(adjacentface);
