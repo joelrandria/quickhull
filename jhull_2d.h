@@ -36,7 +36,6 @@ public:
 	virtual bool iterate();
 
 	virtual std::vector<int> hull() const { return _hullpointsidx; }
-
 };
 
 inline JHull2d& JHull2d::operator=(JHull2d&& hull)

@@ -60,6 +60,8 @@ void GLViewer::reset()
 
 	// Create GL geometry
 	updateGLGeometry();
+
+	_restoreprevioussession = false;
 }
 int GLViewer::quit()
 {
@@ -70,17 +72,22 @@ std::vector<Point> GLViewer::loadRandomPoints(int count)
 {
 	std::vector<Point> points;
 
-	Point p;
-
 	points.reserve(count);
 
+	// Generate random 3D points within unit cube
 	while (count-- > 0)
-	{
-		p.x = (float)rand() / RAND_MAX;
-		p.y = (float)rand() / RAND_MAX;
-		p.z = (float)rand() / RAND_MAX;
+		points.push_back(Point(
+		(float)rand() / RAND_MAX,
+		(float)rand() / RAND_MAX,
+		(float)rand() / RAND_MAX));
 
-		points.push_back(p);
+	if (rand() % 3 == 0)
+	{
+		int nulldim = rand() % 3;
+
+		// Points coplanarization
+		for (int i = 0; i < (int)points.size(); ++i)
+			points[i][nulldim] = 0;
 	}
 
 	return points;
@@ -449,7 +456,6 @@ int GLViewer::draw()
 	{
 		key('i') = 0;
 
-		_restoreprevioussession = false;
 		reset();
 	}
 	if (key('v'))
