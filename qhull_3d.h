@@ -30,7 +30,7 @@ private:
 	private:
 
 		//! Global point set.
-		const std::vector<gk::Point>* _points;
+		const gk::Point* _points;
 
 	public:
 
@@ -38,9 +38,9 @@ private:
 
 		HEEdge* edge;	//! One of the half-edges emanating from the vertex
 
-		HEVertex(const std::vector<gk::Point>* points) : _points(points), index(-1), edge(nullptr) {}
+		HEVertex(const gk::Point* points) : _points(points), index(-1), edge(nullptr) {}
 
-		const gk::Point& getPoint() const { return (*_points)[index]; }
+		const gk::Point& getPoint() const { return _points[index]; }
 
 		//! Get all the faces connected to this vertex.
 		std::vector<HEFace*> getConnectedFaces() const;
@@ -121,7 +121,8 @@ private:
 	int _iterationid;
 
 	//! Input points.
-	const std::vector<gk::Point>* _points;
+	const gk::Point* _points;
+	int _pointcount;
 
 	//! Global vertex set.
 	std::vector<std::unique_ptr<HEVertex>> _vertices;
@@ -154,7 +155,7 @@ public:
 
 	virtual void clear();
 
-	virtual void initialize(const std::vector<gk::Point>* points);
+	virtual void initialize(const gk::Point* points, int count);
 
 	virtual int build();
 	virtual bool iterate();
@@ -365,6 +366,7 @@ inline QHull3d& QHull3d::operator=(QHull3d&& hull)
 		_iterationid = hull._iterationid;
 
 		_points = hull._points;
+		_pointcount = hull._pointcount;
 
 		_vertices = std::move(hull._vertices);
 		_edges = std::move(hull._edges);
@@ -395,6 +397,7 @@ inline void QHull3d::clear()
 	_iterationid = -1;
 
 	_points = nullptr;
+	_pointcount = 0;
 }
 
 inline QHull3d::HEEdge* QHull3d::createEdge()

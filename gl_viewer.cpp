@@ -54,7 +54,7 @@ void GLViewer::reset()
 	}
 
 	// Build convex hull
-	_qhull.initialize(&_points);
+	_qhull.initialize(&_points[0], (int)_points.size());
 	
 	std::cout << "Convex hull built in " << _qhull.build() << " iterations" << std::endl;
 

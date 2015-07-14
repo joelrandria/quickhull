@@ -16,7 +16,8 @@ private:
 	int _iterationid;
 
 	//! Input points.
-	const std::vector<gk::Vec2>* _points;
+	const gk::Vec2* _points;
+	int _pointcount;
 
 	//! Convex hull's point indices.
 	std::vector<int> _hullpointsidx;
@@ -30,7 +31,7 @@ public:
 
 	virtual void clear();
 
-	virtual void initialize(const std::vector<gk::Vec2>* points);
+	virtual void initialize(const gk::Vec2* points, int count);
 
 	virtual int build();
 	virtual bool iterate();
@@ -46,6 +47,7 @@ inline JHull2d& JHull2d::operator=(JHull2d&& hull)
 		_iterationid = hull._iterationid;
 
 		_points = std::move(hull._points);
+		_pointcount = hull._pointcount;
 
 		_hullpointsidx = std::move(hull._hullpointsidx);
 	}
@@ -58,6 +60,8 @@ inline void JHull2d::clear()
 	_hullpointsidx.clear();
 
 	_points = nullptr;
+	_pointcount = 0;
+
 	_iterationid = -1;
 	_done = false;
 }
@@ -87,21 +91,21 @@ inline bool JHull2d::iterate()
 	++_iterationid;
 
 	p0idx = _hullpointsidx.back();
-	p0 = (*_points)[p0idx];
+	p0 = _points[p0idx];
 
-	for (p1idx = 0; p1idx < (int)_points->size(); ++p1idx)
+	for (p1idx = 0; p1idx < (int)_pointcount; ++p1idx)
 		if (p1idx != p0idx)
 			break;
-	p1 = (*_points)[p1idx];
+	p1 = _points[p1idx];
 
 	n01 = gk::Vec2(p0.y - p1.y, p1.x - p0.x);
 
-	for (int i = 0; i < (int)_points->size(); ++i)
+	for (int i = 0; i < (int)_pointcount; ++i)
 	{
 		if (i == p0idx || i == p1idx)
 			continue;
 
-		p2 = (*_points)[i];
+		p2 = _points[i];
 
 		d = n01.x * (p2.x - p0.x) + n01.y * (p2.y - p0.y);
 

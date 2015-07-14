@@ -29,7 +29,7 @@ public:
 	virtual void clear() = 0;
 
 	//! Initialize the hull computing for the specified point set.
-	virtual void initialize(const std::vector<gk::Point>* points) = 0;
+	virtual void initialize(const gk::Point* points, int count) = 0;
 
 	//! Build the point set's convex hull.
 	//! Return the number of performed iteration to build the hull.

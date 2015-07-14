@@ -3,11 +3,12 @@
 
 #include <Transform.h>
 
-void QHull3d::initialize(const std::vector<gk::Point>* points)
+void QHull3d::initialize(const gk::Point* points, int count)
 {
 	clear();
 
 	_points = points;
+	_pointcount = count;
 
 	createVertices();
 	createInitialTetrahedron();
@@ -16,11 +17,9 @@ void QHull3d::createVertices()
 {
 	HEVertex* v;
 
-	const int pointcount = (int)_points->size();
+	_vertices.reserve(_pointcount);
 
-	_vertices.reserve(pointcount);
-
-	for (int i = 0; i < pointcount; ++i)
+	for (int i = 0; i < _pointcount; ++i)
 	{
 		v = new HEVertex(_points);
 		v->index = i;
@@ -41,23 +40,23 @@ void QHull3d::createInitialTetrahedron()
 	for (int i = 0; i < 6; ++i)
 		epidx[i] = -1;
 
-	for (int i = 0; i < (int)_points->size(); ++i)
+	for (int i = 0; i < _pointcount; ++i)
 	{
-		const gk::Point& p = (*_points)[i];
+		const gk::Point& p = _points[i];
 
-		if (epidx[0] < 0 || p.x < (*_points)[epidx[0]].x)
+		if (epidx[0] < 0 || p.x < _points[epidx[0]].x)
 			epidx[0] = i;
-		if (epidx[1] < 0 || p.x > (*_points)[epidx[1]].x)
+		if (epidx[1] < 0 || p.x > _points[epidx[1]].x)
 			epidx[1] = i;
 
-		if (epidx[2] < 0 || p.y < (*_points)[epidx[2]].y)
+		if (epidx[2] < 0 || p.y < _points[epidx[2]].y)
 			epidx[2] = i;
-		if (epidx[3] < 0 || p.y > (*_points)[epidx[3]].y)
+		if (epidx[3] < 0 || p.y > _points[epidx[3]].y)
 			epidx[3] = i;
 
-		if (epidx[4] < 0 || p.z < (*_points)[epidx[4]].z)
+		if (epidx[4] < 0 || p.z < _points[epidx[4]].z)
 			epidx[4] = i;
-		if (epidx[5] < 0 || p.z > (*_points)[epidx[5]].z)
+		if (epidx[5] < 0 || p.z > _points[epidx[5]].z)
 			epidx[5] = i;
 	}
 
@@ -68,7 +67,7 @@ void QHull3d::createInitialTetrahedron()
 	{
 		for (int j = i + 1; j < 6; ++j)
 		{
-			gk::Vector vij((*_points)[epidx[i]], (*_points)[epidx[j]]);
+			gk::Vector vij(_points[epidx[i]], _points[epidx[j]]);
 
 			if ((d = vij.LengthSquared()) > dmax)
 			{
@@ -84,15 +83,15 @@ void QHull3d::createInitialTetrahedron()
 	dmax = 0.f;
 	tetraidx[2] = -1;
 
-	const gk::Point& t0 = (*_points)[tetraidx[0]];
-	gk::Vector t01 = gk::Normalize(gk::Vector(t0, (*_points)[tetraidx[1]]));
+	const gk::Point& t0 = _points[tetraidx[0]];
+	gk::Vector t01 = gk::Normalize(gk::Vector(t0, _points[tetraidx[1]]));
 
 	for (int i = 0; i < 6; ++i)
 	{
 		if (epidx[i] == tetraidx[0] || epidx[i] == tetraidx[1])
 			continue;
 
-		gk::Vector t0i(t0, (*_points)[epidx[i]]);
+		gk::Vector t0i(t0, _points[epidx[i]]);
 		float pprojlength = gk::Dot(t0i, t01);
 		d = t0i.LengthSquared() - (pprojlength * pprojlength);
 
@@ -107,7 +106,7 @@ void QHull3d::createInitialTetrahedron()
 	// Special case where there are only 2 extreme points => Pick any remaining point
 	if (tetraidx[2] < 0)
 	{
-		for (int i = 0; i < (int)_points->size(); ++i)
+		for (int i = 0; i < _pointcount; ++i)
 		{
 			if (i != tetraidx[0] && i != tetraidx[1])
 			{
@@ -121,13 +120,13 @@ void QHull3d::createInitialTetrahedron()
 	dmax = 0.f;
 	HEFace* tetrabase = createFace(tetraidx[0], tetraidx[1], tetraidx[2]);
 
-	for (int i = 0; i < (int)_points->size(); ++i)
+	for (int i = 0; i < _pointcount; ++i)
 	{
 		if (i == tetraidx[0] || i == tetraidx[1] || i == tetraidx[2])
 			continue;
 
-		//if (fabs(d = tetrabase->distance((*_points)[i])) > fabs(dmax))
-		if (fabs(d = tetrabase->distance((*_points)[i])) >= fabs(dmax))
+		//if (fabs(d = tetrabase->distance(_points[i])) > fabs(dmax))
+		if (fabs(d = tetrabase->distance(_points[i])) >= fabs(dmax))
 		{
 			tetraidx[3] = i;
 
@@ -152,7 +151,7 @@ void QHull3d::createInitialTetrahedron()
 	tetrafaces.insert(tetrafaces.begin(), tetrabase);
 
 	// Assign remaining points to their corresponding face
-	for (int i = 0; i < (int)_points->size(); ++i)
+	for (int i = 0; i < _pointcount; ++i)
 	{
 		if (i == tetraidx[0] || i == tetraidx[1] || i == tetraidx[2] || i == tetraidx[3])
 			continue;
@@ -187,12 +186,12 @@ void QHull3d::initialize2d()
 	gk::Vector v0;
 	gk::Vector v1;
 
-	p0 = (*_points)[0];
-	v0 = gk::Vector(p0, (*_points)[1]);
+	p0 = _points[0];
+	v0 = gk::Vector(p0, _points[1]);
 
-	for (int i = 2; i < (int)_points->size(); ++i)
+	for (int i = 2; i < _pointcount; ++i)
 	{
-		n = gk::Cross(v0, gk::Vector(p0, (*_points)[i]));
+		n = gk::Cross(v0, gk::Vector(p0, _points[i]));
 		if (n.x != 0 || n.y != 0 || n.z != 0)
 			break;
 	}
@@ -202,13 +201,6 @@ void QHull3d::initialize2d()
 	v0 = gk::Normalize(v0);
 	v1 = gk::Cross(v0, n);
 
-// 	gk::Transform worldToPlane = gk::Transform({
-// 		v0.x, n.x, v1.x, p0.x,
-// 		v0.y, n.y, v1.y, p0.y,
-// 		v0.z, n.z, v1.z, p0.z,
-// 		0, 0, 0, 1
-// 	}).inverse();
-
 	gk::Transform worldToPlane = gk::Transform({
 		v0.x,	v0.y,	v0.z,	-(v0.x * p0.x + v0.y * p0.y + v0.z * p0.z),
 		n.x,	n.y,	n.z,	-(n.x * p0.x + n.y * p0.y + n.z * p0.z),
@@ -217,16 +209,16 @@ void QHull3d::initialize2d()
 	});
 
 	// Move all point to the planar coordinate system
-	for (int i = 0; i < (int)_points->size(); ++i)
+	for (int i = 0; i < _pointcount; ++i)
 	{
-		gk::Point p = worldToPlane((*_points)[i]);
+		gk::Point p = worldToPlane(_points[i]);
 
 		_points2d.push_back(gk::Vec2(p.x, p.z));
 	}
 
 	// Initialize the computation of the 2D convex hull
 	_hull2d = std::make_unique<JHull2d>();
-	_hull2d->initialize(&_points2d);
+	_hull2d->initialize(&_points2d[0], (int)_points2d.size());
 }
 
 std::vector<QHull3d::Face> QHull3d::hull() const
