@@ -230,10 +230,10 @@ void GLViewer::createGLGeometry()
 
 	_pointsgl->indices = createGLUnmanagedBuffer(GL_ELEMENT_ARRAY_BUFFER, indices);
 
-	// Hull vertices
 	std::vector<QHull3d::Face> hull = _qhull.hull();
 	if (!hull.empty())
 	{
+		// Hull vertices
 		colors = std::vector<gk::Vec4>(_points.size(), gk::Vec4(1, 1, 0, 1));
 
 		indices.resize(hull.size() * 3);

@@ -13,12 +13,12 @@ int main(int argc, char** argv)
 
 	GLViewer app(
 		GLCamera(
-		Point(0.5f, 0.5f, 2),
+		Point(-50000, 10000, 0),
 		Vector(0, 1, 0),
-		Vector(0, 0, -1),
+		Vector(-1, 0, 0),
 		Vector(0, 1, 0),
-		0.05f,
-		gk::Perspective(60, (float)WINDOW_WIDTH / (float)WINDOW_HEIGHT, 0.01f, 10)
+		500,
+		gk::Perspective(60, (float)WINDOW_WIDTH / (float)WINDOW_HEIGHT, 1, 100000)
 		),
 		WINDOW_WIDTH,
 		WINDOW_HEIGHT,

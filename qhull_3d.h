@@ -213,9 +213,12 @@ private:
 	void getVisibleUnvisitedConnectedFaces(const int iterationId, const HEFace* face, const gk::Point& p, std::vector<HEFace*>& visiblefaces);
 	//! Get the horizon edge loop within the specified visible face set.
 	//! The obtained horizon edge loop is counter clockwise oriented.
-	std::vector<HEEdge*> getHorizonEdgeLoop(const int iterationId, const std::vector<HEFace*>& visiblefaces) const;
+	//! Returns an empty vector and sets onedge to true if the point is on an horizon edge.
+	std::vector<HEEdge*> getHorizonEdgeLoop(const int iterationId, const std::vector<HEFace*>& visiblefaces, const gk::Point& p, bool& onedge) const;
 	//! Get the horizon edge directly following the specified one in the counter clockwise direction.
 	HEEdge* getNextHorizonEdge(const int iterationId, HEEdge* horizonedge) const;
+	//! Returns true if the point p is on the segment formed by e1 and e2.
+	bool isOnEdge(const gk::Point& e1, const gk::Point& e2, const gk::Point& p) const;
 
 	//! Check the specified manifold validity (debug purpose only).
 	void assertManifoldValidity(const HEVertex* vertex) const
@@ -639,17 +642,22 @@ inline bool QHull3d::iterate()
 	visiblefaces.push_back(face);
 
 	// Pop extreme vertex
-	_hull = face->vertices[0];
+	HEVertex* extreme = face->vertices[0];
 	face->vertices.erase(face->vertices.begin());
 
 	// Get all unvisited connected faces visible from the current face's extreme point
-	getVisibleUnvisitedConnectedFaces(_iterationid, visiblefaces[0], _hull->getPoint(), visiblefaces);
+	getVisibleUnvisitedConnectedFaces(_iterationid, visiblefaces[0], extreme->getPoint(), visiblefaces);
 
 	// Get horizon edges within the visible face set
-	std::vector<QHull3d::HEEdge*> horizoneedgeloop = getHorizonEdgeLoop(_iterationid, visiblefaces);
+	bool onedge;
+	std::vector<QHull3d::HEEdge*> horizoneedgeloop = getHorizonEdgeLoop(_iterationid, visiblefaces, extreme->getPoint(), onedge);
+
+	// Discard points on edge
+	if (onedge)
+		return true;
 
 	// Extrude the horizon to the extreme point
-	std::vector<HEFace*> newfaces = extrudeIn(horizoneedgeloop, _hull->index);
+	std::vector<HEFace*> newfaces = extrudeIn(horizoneedgeloop, extreme->index);
 
 	// Assign the old visible faces remaining points to the new faces
 	for (int of = 0; of < (int)visiblefaces.size(); ++of)
@@ -670,6 +678,9 @@ inline bool QHull3d::iterate()
 	// Push the new created faces on the processing stack
 	for (int i = 0; i < (int)newfaces.size(); ++i)
 		_processingfaces.push(newfaces[i]);
+
+	// Update hull starting vertex
+	_hull = extreme;
 
 	//////////////////////////////////////////////////////////////////////////
 	// ToDo JRA: Remove this test code
@@ -697,9 +708,11 @@ inline void QHull3d::getVisibleUnvisitedConnectedFaces(const int iterationId, co
 		}
 	}
 }
-inline std::vector<QHull3d::HEEdge*> QHull3d::getHorizonEdgeLoop( const int iterationId, const std::vector<HEFace*>& visiblefaces) const
+inline std::vector<QHull3d::HEEdge*> QHull3d::getHorizonEdgeLoop(const int iterationId, const std::vector<HEFace*>& visiblefaces, const gk::Point& p, bool& onedge) const
 {
 	std::vector<QHull3d::HEEdge*> horizonedgeloop;
+
+	onedge = false;
 
 	// Get a first horizon edge
 	HEEdge* starthorizonedge = nullptr;
@@ -723,6 +736,16 @@ inline std::vector<QHull3d::HEEdge*> QHull3d::getHorizonEdgeLoop( const int iter
 			break;
 	}
 
+	// Detect point-on-edge case
+	if (isOnEdge(
+		starthorizonedge->vertex->getPoint(),
+		starthorizonedge->next->next->vertex->getPoint(),
+		p))
+	{
+		onedge = true;
+		return std::vector<QHull3d::HEEdge*>();
+	}
+
 	// Complete the loop
 	HEEdge* nexthorizonedge;
 	HEEdge* currenthorizonedge = starthorizonedge;
@@ -731,6 +754,16 @@ inline std::vector<QHull3d::HEEdge*> QHull3d::getHorizonEdgeLoop( const int iter
 
 	while ((nexthorizonedge = getNextHorizonEdge(iterationId, currenthorizonedge)) != starthorizonedge)
 	{
+		// Detect point-on-edge case
+		if (isOnEdge(
+			nexthorizonedge->vertex->getPoint(),
+			nexthorizonedge->next->next->vertex->getPoint(),
+			p))
+		{
+			onedge = true;
+			return std::vector<QHull3d::HEEdge*>();
+		}
+
 		horizonedgeloop.push_back(nexthorizonedge);
 
 		currenthorizonedge = nexthorizonedge;
@@ -746,6 +779,11 @@ inline QHull3d::HEEdge* QHull3d::getNextHorizonEdge(const int iterationId, HEEdg
 		horizonedge = horizonedge->next->next->coedge;
 
 	return horizonedge;
+}
+inline bool QHull3d::isOnEdge(const gk::Point& e1, const gk::Point& e2, const gk::Point& p) const
+{
+	gk::Vector n = gk::Cross(e2 -e1, p - e1);
+	return (n.x == 0 && n.y == 0 && n.z == 0 && gk::BBox(e1, e2).Inside(p));
 }
 
 #endif
